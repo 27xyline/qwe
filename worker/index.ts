@@ -1,6 +1,9 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
-import handler from "vinext/server/app-router-entry";
+// The generic handler resolves to the App Router in both the local Vite
+// runtime and the deployed Worker. Importing app-router-entry directly skips
+// that resolution layer and can leave the dev server without application routes.
+import handler from "vinext/server/fetch-handler";
 
 interface Env {
   ASSETS: Fetcher;
