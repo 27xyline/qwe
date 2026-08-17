@@ -13,6 +13,8 @@ type MunicipalityMetric = Municipality & { properties: Municipality["properties"
 type CityMetric = City & { index: number; color: string; district: string; districtDensity: number; sx: number; sy: number; x: number; y: number };
 type CandidateDefinition = { city: string; district: string; road: string; roadDistance: string; coverage: string; demand: number; access: number; constraints: number };
 type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number };
+type ContextRegion = { type: "Feature"; properties: { name: string }; geometry: Geometry; label: Position; labelLines: [string, string] };
+type ContextRegionGraphic = ContextRegion & { d: string | null; labelX: number; labelY: number };
 
 const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь"]);
 const cityColors = ["#0077b6", "#00a896", "#7b2cbf", "#ef476f", "#e76f51", "#f4a261", "#6a994e", "#5e60ce", "#c1121f", "#577590"];
@@ -22,6 +24,25 @@ const candidates: CandidateDefinition[] = [
   { city: "Коломна", district: "Коломна", road: "М-5 «Урал»", roadDistance: "3,6 км", coverage: "241 тыс.", demand: 71, access: 79, constraints: 7 },
   { city: "Химки", district: "Химки", road: "М-10 «Россия»", roadDistance: "2,5 км", coverage: "280 тыс.", demand: 87, access: 71, constraints: 16 },
   { city: "Серпухов", district: "Серпухов", road: "М-2 «Крым»", roadDistance: "2,9 км", coverage: "198 тыс.", demand: 62, access: 76, constraints: 8 },
+];
+
+// These contours deliberately carry no analytical values: they extend the map's
+// geographic frame without changing any population metrics or the UAV ranking.
+const contextRegions: ContextRegion[] = [
+  {
+    type: "Feature",
+    properties: { name: "Тверская область" },
+    geometry: { type: "Polygon", coordinates: [[[33.15, 56.55], [33.58, 57.12], [33.72, 57.88], [34.54, 58.45], [35.72, 58.42], [36.55, 58.08], [36.98, 57.53], [37.4, 57.02], [36.9, 56.72], [36.18, 56.7], [35.62, 56.48], [34.78, 56.37], [33.88, 56.4], [33.15, 56.55]]] },
+    label: [35.08, 57.34],
+    labelLines: ["Тверская", "область"],
+  },
+  {
+    type: "Feature",
+    properties: { name: "Владимирская область" },
+    geometry: { type: "Polygon", coordinates: [[[39.15, 56.55], [39.84, 56.72], [40.72, 56.75], [41.82, 56.62], [42.55, 56.34], [42.82, 55.82], [42.56, 55.32], [41.78, 55.04], [40.8, 55.1], [39.96, 55.25], [39.3, 55.58], [39.15, 56.55]]] },
+    label: [41.17, 55.92],
+    labelLines: ["Владимирская", "область"],
+  },
 ];
 const keyRoads: { name: string; type: "federal" | "ring"; points: Position[] }[] = [
   { name: "М-1 «Беларусь»", type: "federal", points: [[35.15, 55.53], [35.64, 55.56], [36.16, 55.58], [36.7, 55.69], [37.18, 55.76], [37.62, 55.76]] },
@@ -41,6 +62,12 @@ const formatNumber = (value: number) => formatter.format(Math.round(value));
 
 function MapMark() { return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6.5 9.5 4l5 2.5L20 4v13.5l-5.5 2.5-5-2.5L4 20V6.5Z" /><path d="M9.5 4v13.5M14.5 6.5V20" /></svg>; }
 function Slider({ value, onChange, label }: { value: number; onChange: (value: number) => void; label: string }) { return <label className="weight-control"><span>{label}</span><output>{value}%</output><input aria-label={label} type="range" min="0" max="100" value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function ContextRegionLayer({ regions }: { regions: ContextRegionGraphic[] }) {
+  return <g className="context-regions" aria-hidden="true">{regions.map((region) => <path key={region.properties.name} d={region.d ?? undefined} className="context-region" />)}{regions.map((region) => <text key={`${region.properties.name}-label`} x={region.labelX} y={region.labelY} className="context-region-label"><tspan x={region.labelX}>{region.labelLines[0]}</tspan><tspan x={region.labelX} dy="16">{region.labelLines[1]}</tspan></text>)}</g>;
+}
+function ActiveRegionLabel({ coordinates }: { coordinates: [number, number] }) {
+  return <text x={coordinates[0]} y={coordinates[1]} className="active-region-label" aria-hidden="true"><tspan x={coordinates[0]}>Московская</tspan><tspan x={coordinates[0]} dy="17">область</tspan></text>;
+}
 
 export function PopulationMap() {
   const [rawData, setRawData] = useState<MapData | null>(null);
@@ -65,9 +92,14 @@ export function PopulationMap() {
     if (!rawData) return null;
     const radius = 6371.0088;
     const features = rawData.geography.features.map((feature) => { const area = d3.geoArea(feature as d3.ExtendedFeature) * radius * radius; return { ...feature, properties: { ...feature.properties, area, density: feature.properties.population / area } } as MunicipalityMetric; });
-    const collection = { type: "FeatureCollection", features } as unknown as d3.ExtendedFeatureCollection;
-    const projection = d3.geoConicConformal().parallels([54.5, 57.5]).rotate([-37.5, 0]).fitExtent([[35, 24], [965, 565]], collection);
+    const regionalFrame = { type: "FeatureCollection", features: [...contextRegions, ...features] } as unknown as d3.ExtendedFeatureCollection;
+    const projection = d3.geoConicConformal().parallels([54.5, 57.5]).rotate([-37.5, 0]).fitExtent([[44, 22], [956, 566]], regionalFrame);
     const path = d3.geoPath(projection);
+    const contextualRegions = contextRegions.map((region) => {
+      const [labelX, labelY] = projection(region.label) ?? [0, 0];
+      return { ...region, d: path(region as unknown as d3.ExtendedFeature), labelX, labelY } as ContextRegionGraphic;
+    });
+    const activeRegionLabel = projection([37.04, 56.26]) ?? [0, 0];
     const cities = rawData.cities.filter((city) => cityNames.has(city.name)).toSorted((a, b) => b.population - a.population).map((city, index) => {
       const district = features.find((feature) => d3.geoContains(feature as d3.ExtendedFeature, city.coordinates));
       const [sx, sy] = projection(city.coordinates) ?? [0, 0];
@@ -78,7 +110,7 @@ export function PopulationMap() {
     const cityByName = new Map(rawData.cities.map((city) => [city.name, city]));
     const ranked = candidates.map((candidate) => { const city = cityByName.get(candidate.city); if (!city) return null; const [sx, sy] = projection(city.coordinates) ?? [0, 0]; const totalWeight = demandWeight + accessWeight + constraintWeight; const score = (candidate.demand * demandWeight + candidate.access * accessWeight + (100 - candidate.constraints) * constraintWeight) / totalWeight; return { ...candidate, coordinates: city.coordinates, sx, sy, score } as Candidate; }).filter((candidate): candidate is Candidate => candidate !== null).toSorted((first, second) => second.score - first.score);
     const population = features.map((feature) => feature.properties.population); const density = features.map((feature) => feature.properties.density);
-    return { features, path, projection, cities, ranked, scales: { population: d3.scaleSequentialLog([d3.min(population) ?? 1, d3.max(population) ?? 1], d3.interpolateYlGnBu), density: d3.scaleSequentialLog([Math.max(1, d3.min(density) ?? 1), d3.max(density) ?? 1], d3.interpolateYlGnBu) } };
+    return { features, path, projection, contextualRegions, activeRegionLabel, cities, ranked, scales: { population: d3.scaleSequentialLog([d3.min(population) ?? 1, d3.max(population) ?? 1], d3.interpolateYlGnBu), density: d3.scaleSequentialLog([Math.max(1, d3.min(density) ?? 1), d3.max(density) ?? 1], d3.interpolateYlGnBu) } };
   }, [rawData, demandWeight, accessWeight, constraintWeight]);
 
   if (!model || !rawData) return <div className="map-loading">Загружаем карту и данные…</div>;
@@ -135,10 +167,37 @@ export function PopulationMap() {
         <p className="formula">Рейтинг — средневзвешенная оценка спроса, доступа к дорогам и отсутствия ограничений.</p><p className="demo-note">Магистрали показаны ориентировочно. Перед выбором нужны точные дорожные данные, запретные зоны и проверка участка.</p>
         <section className="ranking"><div className="step-label"><b>3</b><span>Сравните кандидатов</span></div><h2>5 кандидатов <small>нажмите, чтобы увидеть детали</small></h2><ol>{model.ranked.map((candidate, index) => <li key={candidate.city}><button className={candidate.city === selected.city ? "rank-row selected" : "rank-row"} type="button" onClick={() => setSelectedCity(candidate.city)}><b>{index + 1}</b><span><strong>{candidate.city}</strong><small>{candidate.road} · {candidate.roadDistance}</small></span><em>{Math.round(candidate.score)}</em></button></li>)}</ol></section>
       </aside>
-      <section className="map-area" aria-label="Карта кандидатов и ключевых дорог"><div className="map-toolbar"><b>2. Изучите транспортные коридоры</b><span className="muted">нажмите на точку или строку кандидата</span></div><svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта Московской области с кандидатами и ключевыми автомобильными дорогами"><rect width="1000" height="610" className="map-water" />{model.features.map((feature) => <path key={feature.properties.name} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className="municipality" />)}<path d={model.path({ type: "FeatureCollection", features: model.features } as unknown as d3.ExtendedFeatureCollection) ?? undefined} className="region-outline" />{roadLines.map((road) => <path key={road.name} d={road.d ?? undefined} className={`road-line ${road.type}`} />)}{model.ranked.map((candidate, index) => <g key={candidate.city} className={candidate.city === selected.city ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCity(candidate.city)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCity(candidate.city); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}</svg><div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div><div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Ключевые автодороги</b><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />А-107 и А-108</span><small>Схема ориентировочная</small></div></div></section>
+      <section className="map-area" aria-label="Карта кандидатов и ключевых дорог">
+        <div className="map-toolbar"><b>2. Изучите транспортные коридоры</b><span className="muted">нажмите на точку или строку кандидата</span></div>
+        <svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта Московской области с кандидатами и ключевыми автомобильными дорогами">
+          <defs><pattern id="map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern></defs>
+          <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" className="map-grid" />
+          <ContextRegionLayer regions={model.contextualRegions} />
+          {model.features.map((feature) => <path key={feature.properties.name} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className="municipality" />)}
+          <path d={model.path({ type: "FeatureCollection", features: model.features } as unknown as d3.ExtendedFeatureCollection) ?? undefined} className="region-outline" />
+          {roadLines.map((road) => <path key={road.name} d={road.d ?? undefined} className={`road-line ${road.type}`} />)}
+          <ActiveRegionLabel coordinates={model.activeRegionLabel} />
+          {model.ranked.map((candidate, index) => <g key={candidate.city} className={candidate.city === selected.city ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCity(candidate.city)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCity(candidate.city); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}
+        </svg>
+        <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div>
+        <div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Ключевые автодороги</b><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />А-107 и А-108</span><small>Схема ориентировочная</small></div><div className="context-map-key"><b>Контекстные регионы</b><span><i className="context-swatch" />Тверская область</span><span><i className="context-swatch" />Владимирская область</span></div></div>
+      </section>
       <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{model.ranked.findIndex((candidate) => candidate.city === selected.city) + 1}</span><h2>{selected.city}</h2><p>{selected.district} городской округ</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="why"><h3>Следующий шаг</h3><p>Проверьте запретные зоны, статус земли и точное время подъезда. Только после этого площадку можно сравнивать с альтернативами.</p></div></section>
     </section> : <section className="simple-workspace" aria-label="Карта населения Московской области">
-      <div className="simple-map-frame"><svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты Московской области по показателю: ${view === "density" ? "плотность" : "население"}`}><rect width="1000" height="610" className="map-water" />{model.features.map((feature) => <path key={feature.properties.name} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={selectedFeature?.properties.name === feature.properties.name ? "municipality selected" : "municipality"} role="button" tabIndex={0} aria-label={`${feature.properties.name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => { setSelectedMunicipality(feature.properties.name); setSelectedCityName(null); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedMunicipality(feature.properties.name); setSelectedCityName(null); } }} />)}<path d={model.path({ type: "FeatureCollection", features: model.features } as unknown as d3.ExtendedFeatureCollection) ?? undefined} className="region-outline" />{model.cities.map((city) => <g key={city.name}><line x1={city.sx} y1={city.sy} x2={city.x} y2={city.y} stroke={city.color} className="city-leader" /><circle cx={city.sx} cy={city.sy} r="3" fill={city.color} /><g transform={`translate(${city.x}, ${city.y})`} className={selectedMapCity?.name === city.name ? "city-marker selected" : "city-marker"} role="button" tabIndex={0} aria-label={`${city.index}. ${city.name}: ${formatNumber(city.population)} жителей`} onClick={(event) => { event.stopPropagation(); toggleMapCity(city); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleMapCity(city); } }}><circle r="10" fill={city.color} /><text>{city.index}</text></g></g>)}</svg><div className="simple-zoom-controls zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div><p>Колесо мыши меняет масштаб. После приближения зажмите карту и перетаскивайте её. Нажмите на номер города, чтобы увидеть информацию; повторное нажатие вернёт сводку по области.</p></div>
+      <div className="simple-map-frame">
+        <svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты Московской области по показателю: ${view === "density" ? "плотность" : "население"}`}>
+          <defs><pattern id="simple-map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern></defs>
+          <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" fill="url(#simple-map-grid)" className="map-grid" />
+          <ContextRegionLayer regions={model.contextualRegions} />
+          {model.features.map((feature) => <path key={feature.properties.name} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={selectedFeature?.properties.name === feature.properties.name ? "municipality selected" : "municipality"} role="button" tabIndex={0} aria-label={`${feature.properties.name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => { setSelectedMunicipality(feature.properties.name); setSelectedCityName(null); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedMunicipality(feature.properties.name); setSelectedCityName(null); } }} />)}
+          <path d={model.path({ type: "FeatureCollection", features: model.features } as unknown as d3.ExtendedFeatureCollection) ?? undefined} className="region-outline" />
+          <ActiveRegionLabel coordinates={model.activeRegionLabel} />
+          {model.cities.map((city) => <g key={city.name}><line x1={city.sx} y1={city.sy} x2={city.x} y2={city.y} stroke={city.color} className="city-leader" /><circle cx={city.sx} cy={city.sy} r="3" fill={city.color} /><g transform={`translate(${city.x}, ${city.y})`} className={selectedMapCity?.name === city.name ? "city-marker selected" : "city-marker"} role="button" tabIndex={0} aria-label={`${city.index}. ${city.name}: ${formatNumber(city.population)} жителей`} onClick={(event) => { event.stopPropagation(); toggleMapCity(city); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleMapCity(city); } }}><circle r="10" fill={city.color} /><text>{city.index}</text></g></g>)}
+        </svg>
+        <div className="simple-zoom-controls zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div>
+        <div className="simple-context-key"><b>Контекстные регионы</b><span><i />Тверская область</span><span><i />Владимирская область</span></div>
+        <p>Колесо мыши меняет масштаб. После приближения зажмите карту и перетаскивайте её. Нажмите на номер города, чтобы увидеть информацию; повторное нажатие вернёт сводку по области.</p>
+      </div>
       <aside className="simple-side"><section className="simple-detail"><h2>{simpleTitle}</h2><dl><div><dt>{selectedMapCity ? "Население города" : "Население"}</dt><dd>{simplePopulation}</dd></div><div><dt>{selectedMapCity ? "Плотность округа" : "Плотность"}</dt><dd>{simpleDensity}</dd></div></dl></section><section className="simple-legend"><h2>{view === "density" ? "Плотность, чел./км²" : "Население, чел."}</h2>{legendValues.map((value) => <span key={value}><i style={{ background: activeScale(value) }} />{formatNumber(value)}</span>)}</section><section className="city-list"><h2>10 крупнейших городов</h2><ol>{model.cities.map((city) => <li key={city.name}><button type="button" onClick={() => toggleMapCity(city)}><b style={{ background: city.color }}>{city.index}</b><span>{city.name}</span><em>{view === "density" ? `${formatNumber(city.districtDensity)} чел./км²` : `${formatNumber(city.population)} чел.`}</em></button></li>)}</ol></section></aside>
     </section>}
   </main>;
