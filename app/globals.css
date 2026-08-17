@@ -40,20 +40,9 @@
 .map-key .road-swatch.ring { background: repeating-linear-gradient(90deg, #466d9f 0 5px, transparent 5px 8px); }
 .detail-metrics b { font-size: 18px; }
 
-/* Geographic context: neighbouring regions are intentionally subdued so the
-   analytical layer and every existing interaction stay focused on Moscow oblast. */
 .map-water { fill: #e8f0f4; }
 .map-grid { fill: url(#map-grid); opacity: .78; pointer-events: none; }
 .map-grid-line { fill: none; stroke: #cddce5; stroke-width: .8; opacity: .62; }
-.context-region { fill: #e3e9ee; stroke: #9fadc0; stroke-width: 1.15; vector-effect: non-scaling-stroke; }
-.context-region-label { fill: #607087; font-size: 14px; font-weight: 750; letter-spacing: -.015em; text-anchor: middle; paint-order: stroke fill; stroke: rgba(248,251,253,.92); stroke-width: 4px; stroke-linejoin: round; }
-.active-region-label { fill: #122653; font-size: 15px; font-weight: 850; letter-spacing: -.025em; text-anchor: middle; paint-order: stroke fill; stroke: rgba(255,255,255,.94); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
-.simple-context-key { position: absolute; z-index: 4; bottom: 54px; left: 14px; width: 178px; padding: 10px 11px; border: 1px solid #c9d3df; background: rgba(255,255,255,.93); box-shadow: 0 3px 10px rgba(32,62,113,.09); color: #344866; }
-.simple-context-key b { display: block; margin-bottom: 6px; color: var(--ink); font-size: 11px; }
-.simple-context-key span { display: flex; align-items: center; gap: 7px; margin-top: 4px; font-size: 10px; }
-.simple-context-key i, .context-swatch { display: inline-block; width: 13px; height: 9px; border: 1px solid #9fadc0; background: #e3e9ee; }
-.context-map-key { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e3e8ef; }
-.map-key .context-map-key span { white-space: nowrap; }
-.map-key .context-swatch { flex: 0 0 auto; height: 9px; }
+.region-label { fill: #122653; font-size: 15px; font-weight: 850; letter-spacing: -.025em; text-anchor: middle; paint-order: stroke fill; stroke: rgba(255,255,255,.94); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
 
-@media (max-width:760px) { .simple-context-key { bottom: 50px; left: 10px; transform: scale(.9); transform-origin: bottom left; } .context-region-label { font-size: 13px; } .active-region-label { font-size: 14px; } }
+@media (max-width:760px) { .region-label { font-size: 14px; } }
