@@ -46,3 +46,18 @@
 .region-label { fill: #122653; font-size: 15px; font-weight: 850; letter-spacing: -.025em; text-anchor: middle; paint-order: stroke fill; stroke: rgba(255,255,255,.94); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
 
 @media (max-width:760px) { .region-label { font-size: 14px; } }
+
+/* Пятифакторная модель оценки кандидатов для баз БПЛА. */
+.threshold-control { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; padding: 14px 0; border-top: 2px solid #cad8ef; font-size: 14px; font-weight: 700; }
+.threshold-control output { color: var(--blue); }
+.threshold-control input { grid-column: 1 / -1; width: 100%; accent-color: var(--blue); }
+.rank-row.below-threshold { opacity: .58; }
+.score-breakdown { grid-column: 1 / -1; display: grid; gap: 8px; padding-top: 17px; border-top: 1px solid var(--line); }
+.score-breakdown h3 { margin: 0 0 3px; font-size: 13px; }
+.factor-row { display: grid; grid-template-columns: minmax(130px, 180px) 1fr 28px 52px; gap: 9px; align-items: center; font-size: 11px; }
+.factor-row > span { color: #405577; }
+.factor-row > div { height: 7px; overflow: hidden; background: #e3eaf4; border-radius: 999px; }
+.factor-row i { display: block; height: 100%; background: #3971c7; border-radius: inherit; }
+.factor-row b { text-align: right; font-size: 12px; }
+.factor-row small { color: var(--muted); font-size: 10px; }
+@media (max-width: 520px) { .factor-row { grid-template-columns: minmax(105px, 1fr) 1fr 25px; }.factor-row small { display: none; } }

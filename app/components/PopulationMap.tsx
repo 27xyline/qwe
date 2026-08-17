@@ -13,8 +13,9 @@ type MapData = { updatedAt: string; geography: { type: "FeatureCollection"; feat
 type RegionMapData = MapData & { region: RegionId };
 type MunicipalityMetric = Municipality & { properties: Municipality["properties"] & { region: RegionId; key: string; area: number; density: number } };
 type CityMetric = City & { region: RegionId; regionName: string; index: number; color: string; district: string; districtDensity: number; sx: number; sy: number; x: number; y: number };
-type CandidateDefinition = { id: string; region: RegionId; city: string; district: string; road: string; roadDistance: string; coverage: string; demand: number; access: number; constraints: number };
-type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number };
+type CandidateDefinition = { id: string; region: RegionId; city: string; district: string; road: string; roadDistance: string; coverage: string; demand: number; lastMile: number; transport: number; site: number; constraints: number };
+type ScoreBreakdown = { label: string; value: number; weight: number; contribution: number };
+type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number; breakdown: ScoreBreakdown[] };
 
 const regionMeta: Record<RegionId, { name: string; label: Position }> = {
   moscow: { name: "Московская область", label: [37.04, 56.26] },
@@ -24,17 +25,17 @@ const regionMeta: Record<RegionId, { name: string; label: Position }> = {
 const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь", "Тверь", "Ржев", "Вышний Волочёк", "Кимры", "Торжок", "Конаково", "Удомля", "Владимир", "Ковров", "Муром", "Александров", "Гусь-Хрустальный", "Вязники", "Кольчугино"]);
 const cityColors = ["#0077b6", "#00a896", "#7b2cbf", "#ef476f", "#e76f51", "#f4a261", "#6a994e", "#5e60ce", "#c1121f", "#577590", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93", "#ff595e", "#2a9d8f", "#8338ec", "#118ab2", "#e63946", "#3a86ff", "#588157", "#f77f00", "#a44a3f", "#4361ee"];
 const candidates: CandidateDefinition[] = [
-  { id: "moscow-podolsk", region: "moscow", city: "Подольск", district: "Подольск", road: "М-2 «Крым»", roadDistance: "2,1 км", coverage: "315 тыс.", demand: 96, access: 92, constraints: 6 },
-  { id: "moscow-noginsk", region: "moscow", city: "Ногинск", district: "Богородский", road: "М-7 «Волга»", roadDistance: "1,8 км", coverage: "287 тыс.", demand: 79, access: 94, constraints: 8 },
-  { id: "moscow-kolomna", region: "moscow", city: "Коломна", district: "Коломна", road: "М-5 «Урал»", roadDistance: "3,6 км", coverage: "241 тыс.", demand: 71, access: 79, constraints: 7 },
-  { id: "moscow-khimki", region: "moscow", city: "Химки", district: "Химки", road: "М-10 «Россия»", roadDistance: "2,5 км", coverage: "280 тыс.", demand: 87, access: 71, constraints: 16 },
-  { id: "moscow-serpukhov", region: "moscow", city: "Серпухов", district: "Серпухов", road: "М-2 «Крым»", roadDistance: "2,9 км", coverage: "198 тыс.", demand: 62, access: 76, constraints: 8 },
-  { id: "tver-tver", region: "tver", city: "Тверь", district: "Тверь", road: "М-10 «Россия»", roadDistance: "1,4 км", coverage: "413 тыс.", demand: 91, access: 90, constraints: 11 },
-  { id: "tver-rzhev", region: "tver", city: "Ржев", district: "Ржевский", road: "М-9 «Балтия»", roadDistance: "2,8 км", coverage: "119 тыс.", demand: 61, access: 84, constraints: 8 },
-  { id: "tver-torzhok", region: "tver", city: "Торжок", district: "Торжокский", road: "М-10 «Россия»", roadDistance: "2,3 км", coverage: "96 тыс.", demand: 64, access: 89, constraints: 9 },
-  { id: "vladimir-vladimir", region: "vladimir", city: "Владимир", district: "Владимир", road: "М-7 «Волга»", roadDistance: "1,6 км", coverage: "344 тыс.", demand: 93, access: 95, constraints: 13 },
-  { id: "vladimir-kovrov", region: "vladimir", city: "Ковров", district: "Ковров", road: "М-7 «Волга»", roadDistance: "3,2 км", coverage: "128 тыс.", demand: 81, access: 86, constraints: 9 },
-  { id: "vladimir-murom", region: "vladimir", city: "Муром", district: "Муром", road: "М-12 «Восток»", roadDistance: "4,0 км", coverage: "126 тыс.", demand: 78, access: 82, constraints: 10 },
+  { id: "moscow-podolsk", region: "moscow", city: "Подольск", district: "Подольск", road: "М-2 «Крым»", roadDistance: "2,1 км", coverage: "315 тыс.", demand: 96, lastMile: 78, transport: 92, site: 82, constraints: 6 },
+  { id: "moscow-noginsk", region: "moscow", city: "Ногинск", district: "Богородский", road: "М-7 «Волга»", roadDistance: "1,8 км", coverage: "287 тыс.", demand: 79, lastMile: 85, transport: 94, site: 80, constraints: 8 },
+  { id: "moscow-kolomna", region: "moscow", city: "Коломна", road: "М-5 «Урал»", roadDistance: "3,6 км", coverage: "241 тыс.", demand: 71, lastMile: 91, transport: 79, site: 88, constraints: 7 },
+  { id: "moscow-khimki", region: "moscow", city: "Химки", district: "Химки", road: "М-10 «Россия»", roadDistance: "2,5 км", coverage: "280 тыс.", demand: 87, lastMile: 63, transport: 71, site: 57, constraints: 16 },
+  { id: "moscow-serpukhov", region: "moscow", city: "Серпухов", district: "Серпухов", road: "М-2 «Крым»", roadDistance: "2,9 км", coverage: "198 тыс.", demand: 62, lastMile: 88, transport: 76, site: 91, constraints: 8 },
+  { id: "tver-tver", region: "tver", city: "Тверь", district: "Тверь", road: "М-10 «Россия»", roadDistance: "1,4 км", coverage: "413 тыс.", demand: 91, lastMile: 82, transport: 90, site: 78, constraints: 11 },
+  { id: "tver-rzhev", region: "tver", city: "Ржев", district: "Ржевский", road: "М-9 «Балтия»", roadDistance: "2,8 км", coverage: "119 тыс.", demand: 61, lastMile: 84, transport: 84, site: 85, constraints: 8 },
+  { id: "tver-torzhok", region: "tver", city: "Торжок", district: "Торжокский", road: "М-10 «Россия»", roadDistance: "2,3 км", coverage: "96 тыс.", demand: 64, lastMile: 86, transport: 89, site: 83, constraints: 9 },
+  { id: "vladimir-vladimir", region: "vladimir", city: "Владимир", district: "Владимир", road: "М-7 «Волга»", roadDistance: "1,6 км", coverage: "344 тыс.", demand: 93, lastMile: 80, transport: 95, site: 76, constraints: 13 },
+  { id: "vladimir-kovrov", region: "vladimir", city: "Ковров", district: "Ковров", road: "М-7 «Волга»", roadDistance: "3,2 км", coverage: "128 тыс.", demand: 81, lastMile: 84, transport: 86, site: 82, constraints: 9 },
+  { id: "vladimir-murom", region: "vladimir", city: "Муром", district: "Муром", road: "М-12 «Восток»", roadDistance: "4,0 км", coverage: "126 тыс.", demand: 78, lastMile: 88, transport: 82, site: 86, constraints: 10 },
 ];
 const keyRoads: { name: string; type: "federal" | "ring"; points: Position[] }[] = [
   { name: "М-1 «Беларусь»", type: "federal", points: [[35.15, 55.53], [35.64, 55.56], [36.16, 55.58], [36.7, 55.69], [37.18, 55.76], [37.62, 55.76]] },
@@ -108,9 +109,12 @@ export function PopulationMap() {
   const [mapViewport, setMapViewport] = useState({ scale: 1, x: 0, y: 0 });
   const [isDraggingMap, setIsDraggingMap] = useState(false);
   const dragStart = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null);
-  const [demandWeight, setDemandWeight] = useState(50);
-  const [accessWeight, setAccessWeight] = useState(30);
-  const [constraintWeight, setConstraintWeight] = useState(20);
+  const [demandWeight, setDemandWeight] = useState(30);
+  const [lastMileWeight, setLastMileWeight] = useState(25);
+  const [transportWeight, setTransportWeight] = useState(20);
+  const [siteWeight, setSiteWeight] = useState(15);
+  const [constraintWeight, setConstraintWeight] = useState(10);
+  const [minimumScore, setMinimumScore] = useState(70);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,10 +150,24 @@ export function PopulationMap() {
     });
     for (let step = 0; step < 120; step += 1) { for (let firstIndex = 0; firstIndex < cities.length; firstIndex += 1) { for (let secondIndex = firstIndex + 1; secondIndex < cities.length; secondIndex += 1) { const first = cities[firstIndex]; const second = cities[secondIndex]; const dx = second.x - first.x; const dy = second.y - first.y; const distance = Math.hypot(dx, dy) || .01; if (distance < 25) { const push = (25 - distance) / 2; first.x -= dx / distance * push; first.y -= dy / distance * push; second.x += dx / distance * push; second.y += dy / distance * push; } } } cities.forEach((city) => { city.x += (city.sx - city.x) * .028; city.y += (city.sy - city.y) * .028; }); }
     const cityByName = new Map(rawData.flatMap((regionalData) => regionalData.cities.map((city) => [`${regionalData.region}:${city.name}`, city] as const)));
-    const ranked = candidates.map((candidate) => { const city = cityByName.get(`${candidate.region}:${candidate.city}`); if (!city) return null; const [sx, sy] = projection(city.coordinates) ?? [0, 0]; const totalWeight = demandWeight + accessWeight + constraintWeight; const score = (candidate.demand * demandWeight + candidate.access * accessWeight + (100 - candidate.constraints) * constraintWeight) / totalWeight; return { ...candidate, coordinates: city.coordinates, sx, sy, score } as Candidate; }).filter((candidate): candidate is Candidate => candidate !== null).toSorted((first, second) => second.score - first.score);
+    const ranked = candidates.map((candidate) => {
+      const city = cityByName.get(`${candidate.region}:${candidate.city}`);
+      if (!city) return null;
+      const [sx, sy] = projection(city.coordinates) ?? [0, 0];
+      const breakdown = [
+        { label: "Спрос на доставку", value: candidate.demand, weight: demandWeight },
+        { label: "Последняя миля", value: candidate.lastMile, weight: lastMileWeight },
+        { label: "Транспорт и логистика", value: candidate.transport, weight: transportWeight },
+        { label: "Пригодность площадки", value: candidate.site, weight: siteWeight },
+        { label: "Воздушные ограничения", value: 100 - candidate.constraints, weight: constraintWeight },
+      ];
+      const totalWeight = breakdown.reduce((sum, factor) => sum + factor.weight, 0);
+      const score = totalWeight ? breakdown.reduce((sum, factor) => sum + factor.value * factor.weight, 0) / totalWeight : 0;
+      return { ...candidate, coordinates: city.coordinates, sx, sy, score, breakdown: breakdown.map((factor) => ({ ...factor, contribution: totalWeight ? factor.value * factor.weight / totalWeight : 0 })) } as Candidate;
+    }).filter((candidate): candidate is Candidate => candidate !== null).toSorted((first, second) => second.score - first.score);
     const population = features.map((feature) => feature.properties.population); const density = features.map((feature) => feature.properties.density);
     return { features, path, projection, regionLabels, cities, ranked, scales: { population: d3.scaleSequentialLog([d3.min(population) ?? 1, d3.max(population) ?? 1], d3.interpolateYlGnBu), density: d3.scaleSequentialLog([Math.max(1, d3.min(density) ?? 1), d3.max(density) ?? 1], d3.interpolateYlGnBu) } };
-  }, [rawData, demandWeight, accessWeight, constraintWeight]);
+  }, [rawData, demandWeight, lastMileWeight, transportWeight, siteWeight, constraintWeight]);
 
   if (!model || !rawData) return <div className="map-loading">Загружаем карту и данные…</div>;
   const isPlacement = view === "placement";
@@ -158,6 +176,7 @@ export function PopulationMap() {
   const selectedFeature = model.features.find((feature) => feature.properties.key === selectedMunicipality);
   const selectedMapCity = model.cities.find((city) => city.name === selectedCityName);
   const selected = model.ranked.find((candidate) => candidate.id === selectedCandidate) ?? model.ranked[0];
+  const eligibleCandidates = model.ranked.filter((candidate) => candidate.score >= minimumScore);
   const roadLines = keyRoads.map((road) => ({ ...road, d: d3.line<Position>().x((point) => model.projection(point)?.[0] ?? 0).y((point) => model.projection(point)?.[1] ?? 0)(road.points) }));
   const clampOffset = (value: number, scale: number, axis: "x" | "y") => {
     const limit = (scale - 1) * (axis === "x" ? 260 : 165);
@@ -199,11 +218,12 @@ export function PopulationMap() {
       </nav>
     </header>
     {isPlacement ? <section className="decision-layout" aria-label="Подбор площадок для баз БПЛА">
-      <aside className="criteria-panel"><div className="panel-heading"><div className="placement-heading"><MapMark /><div><h2>Подбор площадок БПЛА</h2><p>Черновой рейтинг для первичного отбора</p></div></div><p className="workflow-intro">Настройте важность критериев, изучите точки на карте и выберите площадку для дальнейшей проверки.</p></div>
+      <aside className="criteria-panel"><div className="panel-heading"><div className="placement-heading"><MapMark /><div><h2>Подбор площадок БПЛА</h2><p>Модель первичного отбора площадок</p></div></div><p className="workflow-intro">Рейтинг объединяет спрос, эффект последней мили, транспортную доступность, пригодность участка и ограничения полётов.</p></div>
         <div className="step-label"><b>1</b><span>Задайте важность критериев</span></div>
-        <Slider label="Спрос в зоне" value={demandWeight} onChange={setDemandWeight} /><Slider label="Доступ к магистралям" value={accessWeight} onChange={setAccessWeight} /><Slider label="Отсутствие ограничений" value={constraintWeight} onChange={setConstraintWeight} />
-        <p className="formula">Рейтинг — средневзвешенная оценка спроса, доступа к дорогам и отсутствия ограничений.</p><p className="demo-note">Магистрали показаны ориентировочно. Перед выбором нужны точные дорожные данные, запретные зоны и проверка участка.</p>
-        <section className="ranking"><div className="step-label"><b>3</b><span>Сравните кандидатов</span></div><h2>{model.ranked.length} кандидатов <small>нажмите, чтобы увидеть детали</small></h2><ol>{model.ranked.map((candidate, index) => <li key={candidate.id}><button className={candidate.id === selected.id ? "rank-row selected" : "rank-row"} type="button" onClick={() => setSelectedCandidate(candidate.id)}><b>{index + 1}</b><span><strong>{candidate.city}</strong><small>{candidate.road} · {candidate.roadDistance}</small></span><em>{Math.round(candidate.score)}</em></button></li>)}</ol></section>
+        <Slider label="Спрос на доставку" value={demandWeight} onChange={setDemandWeight} /><Slider label="Эффект последней мили" value={lastMileWeight} onChange={setLastMileWeight} /><Slider label="Транспорт и логистика" value={transportWeight} onChange={setTransportWeight} /><Slider label="Пригодность площадки" value={siteWeight} onChange={setSiteWeight} /><Slider label="Отсутствие ограничений" value={constraintWeight} onChange={setConstraintWeight} />
+        <label className="threshold-control"><span>Минимальный рейтинг для отбора</span><output>{minimumScore} баллов</output><input aria-label="Минимальный рейтинг для отбора" type="range" min="0" max="100" value={minimumScore} onChange={(event) => setMinimumScore(Number(event.target.value))} /></label>
+        <p className="formula">Рейтинг — средневзвешенная оценка пяти факторов. Ограничения понижают балл: 100 означает отсутствие ограничений.</p><p className="demo-note">Данные в прототипе демонстрационные. До операционного решения нужны актуальные геоданные, проверка воздушных зон и участка.</p>
+        <section className="ranking"><div className="step-label"><b>3</b><span>Сравните кандидатов</span></div><h2>{eligibleCandidates.length} из {model.ranked.length} проходят порог <small>нажмите, чтобы увидеть детали</small></h2><ol>{model.ranked.map((candidate, index) => <li key={candidate.id}><button className={`${candidate.id === selected.id ? "rank-row selected" : "rank-row"}${candidate.score < minimumScore ? " below-threshold" : ""}`} type="button" onClick={() => setSelectedCandidate(candidate.id)}><b>{index + 1}</b><span><strong>{candidate.city}</strong><small>{candidate.road} · {candidate.roadDistance}</small></span><em>{Math.round(candidate.score)}</em></button></li>)}</ol></section>
       </aside>
       <section className="map-area" aria-label="Карта кандидатов и ключевых дорог трёх областей">
         <div className="map-toolbar"><b>2. Изучите транспортные коридоры</b><span className="muted">нажмите на точку или строку кандидата</span></div>
@@ -219,7 +239,7 @@ export function PopulationMap() {
         <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div>
         <div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Ключевые автодороги</b><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />А-107 и А-108</span><small>Три области · {model.features.length} муниципалитетов</small></div></div>
       </section>
-      <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{model.ranked.findIndex((candidate) => candidate.id === selected.id) + 1}</span><h2>{selected.city}</h2><p>{selected.district} · {regionMeta[selected.region].name}</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="why"><h3>Следующий шаг</h3><p>Проверьте запретные зоны, статус земли и точное время подъезда. Только после этого площадку можно сравнивать с альтернативами.</p></div></section>
+      <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{model.ranked.findIndex((candidate) => candidate.id === selected.id) + 1} · {selected.score >= minimumScore ? "проходит порог" : "ниже порога"}</span><h2>{selected.city}</h2><p>{selected.district} · {regionMeta[selected.region].name}</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="score-breakdown"><h3>Что формирует рейтинг</h3>{selected.breakdown.map((factor) => <div className="factor-row" key={factor.label}><span>{factor.label}</span><div aria-label={`${factor.label}: ${Math.round(factor.value)} из 100`}><i style={{ width: `${factor.value}%` }} /></div><b>{Math.round(factor.value)}</b><small>вес {factor.weight}%</small></div>)}</div><div className="why"><h3>Следующий шаг</h3><p>Проверьте актуальные запретные зоны, статус земли, подключение к электросети и точное время обслуживания. Только после этого площадку можно утверждать.</p></div></section>
     </section> : <section className="simple-workspace" aria-label="Карта населения трёх областей">
       <div className="simple-map-frame">
         <svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты Московской, Тверской и Владимирской областей по показателю: ${view === "density" ? "плотность" : "население"}`}>
