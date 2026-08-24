@@ -1,0 +1,10 @@
+{
+  "provider": "Росстат",
+  "dataset": "БД ПМО",
+  "indicatorCode": "8112027",
+  "asOf": "2025-01-01",
+  "url": "https://rosstat.gov.ru/storage/mediabank/munst.htm",
+  "retrievedAt": null,
+  "sourceChecksum": null,
+  "note": "Заполните retrievedAt и sourceChecksum после выгрузки официального CSV. Импортёр не примет неполный или неоднозначный набор."
+}
