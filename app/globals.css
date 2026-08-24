@@ -63,3 +63,6 @@
 .factor-row b { text-align: right; font-size: 12px; }
 .factor-row small { color: var(--muted); font-size: 10px; }
 @media (max-width: 520px) { .factor-row { grid-template-columns: minmax(105px, 1fr) 1fr 25px; }.factor-row small { display: none; } }
+
+.map-layer-controls { position: absolute; z-index: 4; top: 18px; right: 18px; }.layers-trigger { border: 1px solid #bfcbdc; border-radius: 7px; padding: 8px 11px; background: rgba(255,255,255,.95); color: var(--ink); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 8px rgba(32,62,113,.08); }.layers-panel { position: absolute; top: calc(100% + 6px); right: 0; display: grid; gap: 7px; min-width: 180px; padding: 10px; border: 1px solid #cbd5e1; background: rgba(255,255,255,.98); box-shadow: 0 8px 22px rgba(32,62,113,.16); }.layers-panel label { display: flex; gap: 8px; align-items: center; color: #334b70; font-size: 12px; cursor: pointer; }.layers-panel input { accent-color: var(--blue); }.map-key { top: 58px; }
+@media (max-width:760px) { .map-layer-controls { top: 10px; right: 10px; }.layers-panel { min-width: 190px; }.map-key { display: none; } }
