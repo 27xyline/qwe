@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Position = [number, number];
 type MapViewport = { scale: number; x: number; y: number };
 type View = "density" | "population" | "placement";
-type RegionId = "moscow" | "tver" | "vladimir" | "kaluga" | "tula" | "ryazan" | "yaroslavl" | "smolensk" | "kostroma" | "ivanovo" | "nizhny";
+type RegionId = "moscow" | "tver" | "vladimir" | "kaluga" | "tula" | "ryazan" | "yaroslavl" | "smolensk" | "kostroma" | "ivanovo" | "nizhny" | "vologda" | "bryansk" | "oryol" | "lipetsk" | "tambov" | "mordovia" | "chuvashia";
 type Geometry = { type: string; coordinates: number[][][] | number[][][][] };
 type Municipality = { type: "Feature"; properties: { name: string; population: number }; geometry: Geometry };
 type City = { name: string; population: number; coordinates: Position };
@@ -31,8 +31,15 @@ const regionMeta: Record<RegionId, { name: string; color: string }> = {
   kostroma: { name: "Костромская область", color: "#8a7045" },
   ivanovo: { name: "Ивановская область", color: "#5a719a" },
   nizhny: { name: "Нижегородская область", color: "#9a5f45" },
+  vologda: { name: "Вологодская область", color: "#4e8696" },
+  bryansk: { name: "Брянская область", color: "#9a6942" },
+  oryol: { name: "Орловская область", color: "#857443" },
+  lipetsk: { name: "Липецкая область", color: "#a65f53" },
+  tambov: { name: "Тамбовская область", color: "#5c7d5c" },
+  mordovia: { name: "Республика Мордовия", color: "#a9697e" },
+  chuvashia: { name: "Чувашская Республика", color: "#5077a5" },
 };
-const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь", "Тверь", "Ржев", "Вышний Волочёк", "Кимры", "Торжок", "Конаково", "Удомля", "Владимир", "Ковров", "Муром", "Александров", "Гусь-Хрустальный", "Вязники", "Кольчугино", "Калуга", "Обнинск", "Людиново", "Киров", "Тула", "Новомосковск", "Алексин", "Щёкино", "Рязань", "Касимов", "Скопин", "Сасово", "Ярославль", "Рыбинск", "Переславль-Залесский", "Тутаев", "Смоленск", "Вязьма", "Рославль", "Ярцево", "Кострома", "Буй", "Галич", "Шарья", "Иваново", "Кинешма", "Шуя", "Вичуга", "Нижний Новгород", "Дзержинск", "Арзамас", "Саров"]);
+const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь", "Тверь", "Ржев", "Вышний Волочёк", "Кимры", "Торжок", "Конаково", "Удомля", "Владимир", "Ковров", "Муром", "Александров", "Гусь-Хрустальный", "Вязники", "Кольчугино", "Калуга", "Обнинск", "Людиново", "Киров", "Тула", "Новомосковск", "Алексин", "Щёкино", "Рязань", "Касимов", "Скопин", "Сасово", "Ярославль", "Рыбинск", "Переславль-Залесский", "Тутаев", "Смоленск", "Вязьма", "Рославль", "Ярцево", "Кострома", "Буй", "Галич", "Шарья", "Иваново", "Кинешма", "Шуя", "Вичуга", "Нижний Новгород", "Дзержинск", "Арзамас", "Саров", "Вологда", "Череповец", "Великий Устюг", "Сокол", "Брянск", "Клинцы", "Новозыбков", "Стародуб", "Орёл", "Ливны", "Мценск", "Липецк", "Елец", "Грязи", "Тамбов", "Мичуринск", "Моршанск", "Саранск", "Рузаевка", "Ковылкино", "Чебоксары", "Новочебоксарск", "Канаш"]);
 const cityColors = ["#0077b6", "#00a896", "#7b2cbf", "#ef476f", "#e76f51", "#f4a261", "#6a994e", "#5e60ce", "#c1121f", "#577590", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93", "#ff595e", "#2a9d8f", "#8338ec", "#118ab2", "#e63946", "#3a86ff", "#588157", "#f77f00", "#a44a3f", "#4361ee"];
 const candidates: CandidateDefinition[] = [
   { id: "moscow-podolsk", region: "moscow", city: "Подольск", district: "Подольск", road: "М-2 «Крым»", roadDistance: "2,1 км", coverage: "315 тыс.", demand: 96, lastMile: 78, transport: 92, site: 82, constraints: 6 },
@@ -62,14 +69,30 @@ const candidates: CandidateDefinition[] = [
   { id: "ivanovo-kineshma", region: "ivanovo", city: "Кинешма", district: "Кинешма", road: "Р-132 «Золотое кольцо»", roadDistance: "3,0 км", coverage: "124 тыс.", demand: 71, lastMile: 84, transport: 80, site: 86, constraints: 8 },
   { id: "nizhny-novgorod", region: "nizhny", city: "Нижний Новгород", district: "Нижний Новгород", road: "М-7 «Волга»", roadDistance: "1,5 км", coverage: "1,2 млн", demand: 98, lastMile: 78, transport: 97, site: 72, constraints: 16 },
   { id: "nizhny-dzerzhinsk", region: "nizhny", city: "Дзержинск", district: "Дзержинск", road: "М-7 «Волга»", roadDistance: "2,1 км", coverage: "228 тыс.", demand: 85, lastMile: 83, transport: 94, site: 80, constraints: 12 },
+  { id: "vologda-vologda", region: "vologda", city: "Вологда", district: "Вологда", road: "А-114 «Вологда — Новая Ладога»", roadDistance: "1,9 км", coverage: "315 тыс.", demand: 87, lastMile: 81, transport: 88, site: 79, constraints: 10 },
+  { id: "vologda-cherepovets", region: "vologda", city: "Череповец", district: "Череповец", road: "А-114 «Вологда — Новая Ладога»", roadDistance: "2,4 км", coverage: "300 тыс.", demand: 89, lastMile: 80, transport: 90, site: 76, constraints: 12 },
+  { id: "bryansk-bryansk", region: "bryansk", city: "Брянск", district: "Брянск", road: "А-240 «Брянск — Новозыбков»", roadDistance: "1,8 км", coverage: "370 тыс.", demand: 90, lastMile: 82, transport: 86, site: 78, constraints: 11 },
+  { id: "bryansk-klintsy", region: "bryansk", city: "Клинцы", district: "Клинцы", road: "А-240 «Брянск — Новозыбков»", roadDistance: "2,7 км", coverage: "68 тыс.", demand: 67, lastMile: 86, transport: 81, site: 87, constraints: 7 },
+  { id: "oryol-oryol", region: "oryol", city: "Орёл", district: "Орёл", road: "Р-120 «Орёл — Брянск»", roadDistance: "1,6 км", coverage: "300 тыс.", demand: 88, lastMile: 80, transport: 89, site: 79, constraints: 10 },
+  { id: "oryol-livny", region: "oryol", city: "Ливны", district: "Ливны", road: "Р-119 «Орёл — Ливны»", roadDistance: "2,9 км", coverage: "47 тыс.", demand: 64, lastMile: 87, transport: 80, site: 89, constraints: 7 },
+  { id: "lipetsk-lipetsk", region: "lipetsk", city: "Липецк", district: "Липецк", road: "Р-119 «Орёл — Тамбов»", roadDistance: "1,7 км", coverage: "500 тыс.", demand: 93, lastMile: 79, transport: 91, site: 75, constraints: 12 },
+  { id: "lipetsk-yelets", region: "lipetsk", city: "Елец", district: "Елец", road: "М-4 «Дон»", roadDistance: "2,3 км", coverage: "100 тыс.", demand: 72, lastMile: 85, transport: 94, site: 84, constraints: 8 },
+  { id: "tambov-tambov", region: "tambov", city: "Тамбов", district: "Тамбов", road: "Р-22 «Каспий»", roadDistance: "2,0 км", coverage: "260 тыс.", demand: 91, lastMile: 80, transport: 90, site: 77, constraints: 11 },
+  { id: "tambov-michurinsk", region: "tambov", city: "Мичуринск", district: "Мичуринск", road: "Р-22 «Каспий»", roadDistance: "2,6 км", coverage: "86 тыс.", demand: 74, lastMile: 86, transport: 85, site: 85, constraints: 8 },
+  { id: "mordovia-saransk", region: "mordovia", city: "Саранск", district: "Саранск", road: "Р-158 «Нижний Новгород — Саратов»", roadDistance: "1,5 км", coverage: "310 тыс.", demand: 92, lastMile: 81, transport: 89, site: 78, constraints: 12 },
+  { id: "mordovia-ruzaevka", region: "mordovia", city: "Рузаевка", district: "Рузаевка", road: "Р-158 «Нижний Новгород — Саратов»", roadDistance: "2,2 км", coverage: "43 тыс.", demand: 66, lastMile: 88, transport: 86, site: 88, constraints: 7 },
+  { id: "chuvashia-cheboksary", region: "chuvashia", city: "Чебоксары", district: "Чебоксары", road: "М-7 «Волга»", roadDistance: "1,7 км", coverage: "490 тыс.", demand: 94, lastMile: 79, transport: 95, site: 74, constraints: 13 },
+  { id: "chuvashia-kanash", region: "chuvashia", city: "Канаш", district: "Канаш", road: "А-151 «Цивильск — Ульяновск»", roadDistance: "2,5 км", coverage: "45 тыс.", demand: 70, lastMile: 86, transport: 84, site: 87, constraints: 8 },
 ];
 const keyRoads: { name: string; type: "federal" | "ring"; points: Position[] }[] = [
   { name: "М-1 «Беларусь»", type: "federal", points: [[32.04, 54.78], [32.55, 54.9], [33.1, 54.98], [34.3, 55.21], [35.15, 55.53], [35.64, 55.56], [36.16, 55.58], [36.7, 55.69], [37.18, 55.76], [37.62, 55.76]] },
   { name: "М-2 «Крым»", type: "federal", points: [[37.62, 55.76], [37.63, 55.57], [37.54, 55.43], [37.65, 55.22], [37.8, 54.83], [37.62, 54.52], [37.62, 54.19]] },
-  { name: "М-3 «Украина»", type: "federal", points: [[37.62, 55.76], [37.4, 55.65], [37.23, 55.5], [36.93, 55.39], [36.76, 55.29], [36.61, 55.11], [36.26, 54.51]] },
-  { name: "М-4 «Дон»", type: "federal", points: [[37.62, 55.76], [37.75, 55.56], [37.83, 55.39], [38.0, 55.22], [38.2, 55.02]] },
+  { name: "М-3 «Украина»", type: "federal", points: [[37.62, 55.76], [37.4, 55.65], [37.23, 55.5], [36.93, 55.39], [36.76, 55.29], [36.61, 55.11], [36.26, 54.51], [35.46, 53.82], [34.37, 53.25]] },
+  { name: "М-4 «Дон»", type: "federal", points: [[37.62, 55.76], [37.75, 55.56], [37.83, 55.39], [38.0, 55.22], [38.2, 55.02], [38.51, 52.62], [39.6, 52.61]] },
   { name: "М-5 «Урал»", type: "federal", points: [[37.62, 55.76], [37.88, 55.73], [38.2, 55.66], [38.56, 55.58], [39.0, 55.53], [39.4, 55.23], [39.73, 54.63]] },
-  { name: "М-7 «Волга»", type: "federal", points: [[37.62, 55.76], [37.88, 55.77], [38.17, 55.79], [38.44, 55.86], [38.8, 55.93], [39.1, 56.03], [39.55, 56.1], [40.12, 56.13], [40.55, 56.2], [41.25, 56.29], [41.72, 56.23], [42.03, 56.05], [43.0, 56.18], [43.46, 56.24], [44.01, 56.33]] },
+  { name: "М-7 «Волга»", type: "federal", points: [[37.62, 55.76], [37.88, 55.77], [38.17, 55.79], [38.44, 55.86], [38.8, 55.93], [39.1, 56.03], [39.55, 56.1], [40.12, 56.13], [40.55, 56.2], [41.25, 56.29], [41.72, 56.23], [42.03, 56.05], [43.0, 56.18], [43.46, 56.24], [44.01, 56.33], [45.18, 55.58], [46.2, 55.73], [47.25, 56.14]] },
+  { name: "Р-22 «Каспий»", type: "federal", points: [[39.73, 54.63], [40.1, 54.3], [40.49, 52.89], [41.44, 52.72]] },
+  { name: "Р-158 «Нижний Новгород — Саратов»", type: "ring", points: [[44.01, 56.33], [44.55, 55.72], [45.18, 54.18], [45.93, 54.06]] },
   { name: "М-8 «Холмогоры»", type: "federal", points: [[37.62, 55.76], [37.82, 55.88], [38.03, 56.03], [38.18, 56.2], [38.3, 56.4], [38.58, 56.75], [39.06, 57.1], [39.89, 57.63], [40.2, 57.85]] },
   { name: "Р-132 «Золотое кольцо»", type: "ring", points: [[37.62, 54.19], [38.28, 54.01], [39.22, 54.34], [39.73, 54.63], [40.45, 54.93], [39.9, 55.45], [39.89, 57.63], [40.93, 57.77], [41.6, 57.05], [42.14, 57.44], [42.35, 58.38], [38.84, 58.05]] },
   { name: "М-9 «Балтия»", type: "federal", points: [[37.62, 55.76], [37.26, 55.82], [36.86, 55.87], [36.44, 55.95], [36.1, 56.02]] },
@@ -163,6 +186,13 @@ export function PopulationMap() {
       { path: "/data/kostroma-oblast-municipalities.json", region: "kostroma" },
       { path: "/data/ivanovo-oblast-municipalities.json", region: "ivanovo" },
       { path: "/data/nizhny-novgorod-oblast-municipalities.json", region: "nizhny" },
+      { path: "/data/vologda-oblast-municipalities.json", region: "vologda" },
+      { path: "/data/bryansk-oblast-municipalities.json", region: "bryansk" },
+      { path: "/data/oryol-oblast-municipalities.json", region: "oryol" },
+      { path: "/data/lipetsk-oblast-municipalities.json", region: "lipetsk" },
+      { path: "/data/tambov-oblast-municipalities.json", region: "tambov" },
+      { path: "/data/mordovia-municipalities.json", region: "mordovia" },
+      { path: "/data/chuvashia-municipalities.json", region: "chuvashia" },
     ];
     Promise.all(sources.map(async ({ path, region }) => {
       const response = await fetch(path, { signal: controller.signal });
@@ -294,13 +324,13 @@ export function PopulationMap() {
     setSelectedCityName(null);
   };
   const toggleMapCity = (city: CityMetric) => { setSelectedCityName((current) => current === city.name ? null : city.name); setSelectedMunicipality(null); };
-  const simpleTitle = selectedMapCity ? `${selectedMapCity.name} · город` : selectedFeature ? `${selectedFeature.properties.name} · ${regionMeta[selectedFeature.properties.region].name}` : "Одиннадцать областей Центральной России";
+  const simpleTitle = selectedMapCity ? `${selectedMapCity.name} · город` : selectedFeature ? `${selectedFeature.properties.name} · ${regionMeta[selectedFeature.properties.region].name}` : "Восемнадцать регионов Центральной России и Поволжья";
   const simplePopulation = selectedMapCity ? `${formatNumber(selectedMapCity.population)} чел.` : selectedFeature ? `${formatNumber(selectedFeature.properties.population)} чел.` : `${formatNumber(d3.sum(model.features, (feature) => feature.properties.population))} чел.`;
   const simpleDensity = selectedMapCity ? `${formatNumber(selectedMapCity.districtDensity)} чел./км²` : selectedFeature ? `${formatNumber(selectedFeature.properties.density)} чел./км²` : "Выберите муниципалитет или город";
 
   return <main className={isPlacement ? "app-shell placement-page" : "app-shell"}>
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">●●●</span><span>Население одиннадцати областей</span></div>
+      <div className="brand"><span className="brand-mark">●●●</span><span>Население восемнадцати регионов</span></div>
       <div className="source-line">Данные на 01.01.2025 · муниципалитеты и крупнейшие города</div>
       <nav className="metric-switch" aria-label="Режим карты">
         <button type="button" aria-pressed={view === "density"} onClick={() => setView("density")}>Плотность</button>
@@ -316,9 +346,9 @@ export function PopulationMap() {
         <p className="formula">Рейтинг — средневзвешенная оценка пяти факторов. Ограничения понижают балл: 100 означает отсутствие ограничений.</p><p className="demo-note">Данные в прототипе демонстрационные. До операционного решения нужны актуальные геоданные, проверка воздушных зон и участка.</p>
         <section className="ranking"><div className="step-label"><b>3</b><span>Сравните кандидатов</span></div><h2>{eligibleCandidates.length} из {model.ranked.length} проходят порог <small>нажмите, чтобы увидеть детали</small></h2><ol>{model.ranked.map((candidate, index) => <li key={candidate.id}><button className={`${candidate.id === selected.id ? "rank-row selected" : "rank-row"}${candidate.score < minimumScore ? " below-threshold" : ""}`} type="button" onClick={() => setSelectedCandidate(candidate.id)}><b>{index + 1}</b><span><strong>{candidate.city}</strong><small>{candidate.road} · {candidate.roadDistance}</small></span><em>{Math.round(candidate.score)}</em></button></li>)}</ol></section>
       </aside>
-      <section className="map-area" aria-label="Карта кандидатов и ключевых дорог одиннадцати областей">
+      <section className="map-area" aria-label="Карта кандидатов и ключевых дорог восемнадцати регионов">
         <div className="map-toolbar"><b>2. Изучите транспортные коридоры</b><span className="muted">нажмите на точку или строку кандидата</span></div>
-        <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта одиннадцати областей Центральной России с кандидатами и ключевыми автомобильными дорогами">
+        <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта восемнадцати регионов Центральной России и Поволжья с кандидатами и ключевыми автомобильными дорогами">
           <defs><pattern id="map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern>{model.regionLayers.map((region) => <filter key={`filter-${region.region}`} id={`region-border-${region.region}`} x="-3%" y="-3%" width="106%" height="106%"><feMorphology in="SourceAlpha" operator="dilate" radius="0.8" result="expanded" /><feComposite in="expanded" in2="SourceAlpha" operator="out" result="outer-border" /><feFlood floodColor={region.color} floodOpacity=".9" result="border-color" /><feComposite in="border-color" in2="outer-border" operator="in" /></filter>)}</defs>
           <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" className="map-grid" />
           {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className="municipality" />)}
@@ -329,12 +359,12 @@ export function PopulationMap() {
           {model.ranked.map((candidate, index) => <g key={candidate.id} className={candidate.id === selected.id ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCandidate(candidate.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCandidate(candidate.id); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}
         </svg>
         <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={resetMapViewport} aria-label="Сбросить масштаб">⌂</button></div>
-        <div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Контекст карты</b><span><i className="region-swatch" />Контуры областей</span><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />Кольцевые и Р-132</span><span><i className="city-swatch" />Кандидаты БПЛА</span><small>Одиннадцать областей · {model.features.length} муниципалитетов</small></div></div>
+        <div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Контекст карты</b><span><i className="region-swatch" />Контуры регионов</span><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />Кольцевые и Р-132</span><span><i className="city-swatch" />Кандидаты БПЛА</span><small>18 регионов · {model.features.length} муниципалитетов</small></div></div>
       </section>
       <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{model.ranked.findIndex((candidate) => candidate.id === selected.id) + 1} · {selected.score >= minimumScore ? "проходит порог" : "ниже порога"}</span><h2>{selected.city}</h2><p>{selected.district} · {regionMeta[selected.region].name}</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="score-breakdown"><h3>Что формирует рейтинг</h3>{selected.breakdown.map((factor) => <div className="factor-row" key={factor.label}><span>{factor.label}</span><div aria-label={`${factor.label}: ${Math.round(factor.value)} из 100`}><i style={{ width: `${factor.value}%` }} /></div><b>{Math.round(factor.value)}</b><small>вес {factor.weight}%</small></div>)}</div><div className="why"><h3>Следующий шаг</h3><p>Проверьте актуальные запретные зоны, статус земли, подключение к электросети и точное время обслуживания. Только после этого площадку можно утверждать.</p></div></section>
-    </section> : <section className="simple-workspace" aria-label="Карта населения одиннадцати областей">
+    </section> : <section className="simple-workspace" aria-label="Карта населения восемнадцати регионов">
       <div className="simple-map-frame">
-        <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты одиннадцати областей Центральной России по показателю: ${view === "density" ? "плотность" : "население"}`}>
+        <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты восемнадцати регионов Центральной России и Поволжья по показателю: ${view === "density" ? "плотность" : "население"}`}>
           <defs><pattern id="simple-map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern>{model.regionLayers.map((region) => <filter key={`filter-${region.region}`} id={`region-border-${region.region}`} x="-3%" y="-3%" width="106%" height="106%"><feMorphology in="SourceAlpha" operator="dilate" radius="0.8" result="expanded" /><feComposite in="expanded" in2="SourceAlpha" operator="out" result="outer-border" /><feFlood floodColor={region.color} floodOpacity=".9" result="border-color" /><feComposite in="border-color" in2="outer-border" operator="in" /></filter>)}</defs>
           <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" fill="url(#simple-map-grid)" className="map-grid" />
           {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={selectedFeature?.properties.key === feature.properties.key ? "municipality selected" : "municipality"} role="button" tabIndex={0} aria-label={`${feature.properties.name}, ${regionMeta[feature.properties.region].name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => selectMunicipality(feature.properties.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMunicipality(feature.properties.key); } }} />)}
@@ -355,7 +385,7 @@ export function PopulationMap() {
             <div><dt>{selectedMapCity ? "Плотность округа" : "Плотность"}</dt><dd>{simpleDensity}</dd></div>
           </dl>
           <div className="coverage-stats">
-            <span><b>{focusedRegionStats ? focusedRegionStats.municipalities : model.regionLayers.length}</b>{focusedRegionStats ? " муниципалитетов" : " областей"}</span>
+            <span><b>{focusedRegionStats ? focusedRegionStats.municipalities : model.regionLayers.length}</b>{focusedRegionStats ? " муниципалитетов" : " регионов"}</span>
             <span><b>{focusedRegionStats ? formatCompact(focusedRegionStats.area) : model.features.length}</b>{focusedRegionStats ? " км²" : " муниципалитетов"}</span>
           </div>
         </section>
