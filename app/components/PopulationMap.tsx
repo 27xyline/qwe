@@ -4,10 +4,11 @@ import * as d3 from "d3";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RegionFilter } from "./map/RegionFilter";
 import { regionMeta, regionSources } from "./map/config";
+import { clusterCandidates } from "./map/clusters";
 import { MapLayerControls } from "./map/MapLayerControls";
 import { defaultLayerVisibilityByView, getLayersForView, toggleLayerForView } from "./map/layers";
 import { getSelectedCandidateIdForRegion, getVisibleCandidates, getVisibleCities, getVisibleRegionLabels } from "./map/selectors";
-import type { Candidate, CandidateDefinition, CityMetric, Geometry, LayerVisibilityByView, MapData, MapLayer, MapViewport, MunicipalityMetric, Position, RegionFilter as RegionFilterValue, RegionId, RegionLayer, RegionMapData, View } from "./map/types";
+import type { Candidate, CandidateCluster, CandidateDefinition, CityMetric, Geometry, LayerVisibilityByView, MapData, MapLayer, MapViewport, MunicipalityMetric, Position, RegionFilter as RegionFilterValue, RegionId, RegionLayer, RegionMapData, View } from "./map/types";
 
 const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь", "Тверь", "Ржев", "Вышний Волочёк", "Кимры", "Торжок", "Конаково", "Удомля", "Владимир", "Ковров", "Муром", "Александров", "Гусь-Хрустальный", "Вязники", "Кольчугино", "Калуга", "Обнинск", "Людиново", "Киров", "Тула", "Новомосковск", "Алексин", "Щёкино", "Рязань", "Касимов", "Скопин", "Сасово", "Ярославль", "Рыбинск", "Переславль-Залесский", "Тутаев", "Смоленск", "Вязьма", "Рославль", "Ярцево", "Кострома", "Буй", "Галич", "Шарья", "Иваново", "Кинешма", "Шуя", "Вичуга", "Нижний Новгород", "Дзержинск", "Арзамас", "Саров", "Вологда", "Череповец", "Великий Устюг", "Сокол", "Брянск", "Клинцы", "Новозыбков", "Стародуб", "Орёл", "Ливны", "Мценск", "Липецк", "Елец", "Грязи", "Тамбов", "Мичуринск", "Моршанск", "Саранск", "Рузаевка", "Ковылкино", "Чебоксары", "Новочебоксарск", "Канаш"]);
 const cityColors = ["#0077b6", "#00a896", "#7b2cbf", "#ef476f", "#e76f51", "#f4a261", "#6a994e", "#5e60ce", "#c1121f", "#577590", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93", "#ff595e", "#2a9d8f", "#8338ec", "#118ab2", "#e63946", "#3a86ff", "#588157", "#f77f00", "#a44a3f", "#4361ee"];
@@ -127,6 +128,7 @@ export function PopulationMap() {
   const [selectedRegion, setSelectedRegion] = useState<RegionFilterValue>("all");
   const [layersByView, setLayersByView] = useState<LayerVisibilityByView>(defaultLayerVisibilityByView);
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
+  const [mapWidth, setMapWidth] = useState(1000);
   const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null);
   const [selectedCityName, setSelectedCityName] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState("moscow-podolsk");
@@ -159,6 +161,17 @@ export function PopulationMap() {
   useEffect(() => () => {
     if (transformFrame.current !== null) cancelAnimationFrame(transformFrame.current);
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    const updateWidth = () => setMapWidth(map.clientWidth || map.getBoundingClientRect().width || 1000);
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(map);
+    return () => observer.disconnect();
+  }, [view]);
 
   const model = useMemo(() => {
     if (!rawData) return null;
@@ -236,9 +249,11 @@ export function PopulationMap() {
   const focusedRegionStats = focusedRegion ? model.regionLayers.find((region) => region.region === focusedRegion) : null;
   const selected = visibleRankedCandidates.find((candidate) => candidate.id === selectedCandidate) ?? visibleRankedCandidates[0] ?? model.ranked[0];
   const eligibleCandidates = visibleRankedCandidates.filter((candidate) => candidate.score >= minimumScore);
+  const candidateClusters = isPlacement && layers.candidates ? clusterCandidates(visibleRankedCandidates, mapViewport.scale, mapWidth, selected.id) : [];
   const roadLines = keyRoads.map((road) => ({ ...road, d: d3.line<Position>().x((point) => model.projection(point)?.[0] ?? 0).y((point) => model.projection(point)?.[1] ?? 0)(road.points) }));
   const clampOffset = (value: number, scale: number, axis: "x" | "y") => {
-    const limit = (scale - 1) * (axis === "x" ? 260 : 165);
+    const renderedSize = axis === "x" ? mapRef.current?.clientWidth || mapWidth : mapRef.current?.clientHeight || 610;
+    const limit = (scale - 1) * renderedSize / 2;
     return Math.max(-limit, Math.min(limit, value));
   };
   const formatViewportTransform = (viewport: MapViewport) => `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
@@ -299,6 +314,14 @@ export function PopulationMap() {
     if (!layers.cities) setLayersByView((current) => ({ ...current, [view]: { ...current[view], cities: true } }));
     toggleMapCity(city);
   };
+  const focusCluster = (cluster: CandidateCluster) => {
+    const scale = Math.min(3, Math.max(2.2, mapViewport.scale + .8));
+    const width = mapRef.current?.clientWidth || mapWidth;
+    const height = mapRef.current?.clientHeight || 610;
+    const x = clampOffset(-((cluster.x / 1000) * width - width / 2) * scale, scale, "x");
+    const y = clampOffset(-((cluster.y / 610) * height - height / 2) * scale, scale, "y");
+    commitViewport({ scale, x, y });
+  };
   const simpleTitle = selectedMapCity ? `${selectedMapCity.name} · город` : selectedFeature ? `${selectedFeature.properties.name} · ${regionMeta[selectedFeature.properties.region].name}` : "Восемнадцать регионов Центральной России и Поволжья";
   const simplePopulation = selectedMapCity ? `${formatNumber(selectedMapCity.population)} чел.` : selectedFeature ? `${formatNumber(selectedFeature.properties.population)} чел.` : `${formatNumber(d3.sum(model.features, (feature) => feature.properties.population))} чел.`;
   const simpleDensity = selectedMapCity ? `${formatNumber(selectedMapCity.districtDensity)} чел./км²` : selectedFeature ? `${formatNumber(selectedFeature.properties.density)} чел./км²` : "Выберите муниципалитет или город";
@@ -330,7 +353,7 @@ export function PopulationMap() {
           {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className={selectedRegion === "all" || feature.properties.region === selectedRegion ? "municipality" : "municipality region-muted"} />)}
           {layers.boundaries ? <g data-layer="boundaries">{model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className={selectedRegion === "all" || region.region === selectedRegion ? "region-tint" : "region-tint region-muted"} />)}{model.regionLayers.map((region) => <g key={`${region.region}-outline`} className={`region-outline${selectedRegion === "all" ? "" : region.region === selectedRegion ? " focused" : " muted"}`} filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}{visibleRegionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}</g> : null}
           {layers.roads ? <g data-layer="roads">{roadLines.map((road) => <path key={road.name} d={road.d ?? undefined} className={`road-line ${road.type}`} />)}</g> : null}
-          {layers.candidates ? <g data-layer="candidates">{visibleRankedCandidates.map((candidate, index) => <g key={candidate.id} className={candidate.id === selected.id ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCandidate(candidate.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCandidate(candidate.id); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}</g> : null}
+          {layers.candidates ? <g data-layer="candidates">{candidateClusters.map((cluster) => cluster.candidates.length === 1 ? (() => { const candidate = cluster.candidates[0]; const index = visibleRankedCandidates.findIndex((item) => item.id === candidate.id); return <g key={candidate.id} className={candidate.id === selected.id ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCandidate(candidate.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCandidate(candidate.id); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>; })() : <g key={cluster.id} className={cluster.containsSelected ? "candidate-cluster selected" : "candidate-cluster"} transform={`translate(${cluster.x}, ${cluster.y})`} role="button" tabIndex={0} aria-label={`${cluster.candidates.length} кандидата: ${cluster.candidates.map((candidate) => candidate.city).join(", ")}`} onClick={() => focusCluster(cluster)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); focusCluster(cluster); } }}><circle r="18" /><text>{cluster.candidates.length}</text></g>)}</g> : null}
         </svg>
         <MapLayerControls view={view} layers={layers} isOpen={isLayerPanelOpen} onOpenChange={setIsLayerPanelOpen} onToggle={toggleLayer} />
         <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={resetMapViewport} aria-label="Сбросить масштаб">⌂</button></div>
