@@ -18,18 +18,18 @@ type CandidateDefinition = { id: string; region: RegionId; city: string; distric
 type ScoreBreakdown = { label: string; value: number; weight: number; contribution: number };
 type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number; breakdown: ScoreBreakdown[] };
 
-const regionMeta: Record<RegionId, { name: string; label: Position; color: string }> = {
-  moscow: { name: "Московская область", label: [37.04, 56.26], color: "#245eb7" },
-  tver: { name: "Тверская область", label: [34.35, 57.15], color: "#327a76" },
-  vladimir: { name: "Владимирская область", label: [40.92, 56.46], color: "#8c5d9e" },
-  kaluga: { name: "Калужская область", label: [35.65, 54.55], color: "#aa6c3b" },
-  tula: { name: "Тульская область", label: [37.62, 54.25], color: "#ad4e53" },
-  ryazan: { name: "Рязанская область", label: [40.18, 54.65], color: "#387a9b" },
-  yaroslavl: { name: "Ярославская область", label: [39.65, 57.55], color: "#6c7d35" },
-  smolensk: { name: "Смоленская область", label: [32.4, 54.75], color: "#4f7598" },
-  kostroma: { name: "Костромская область", label: [42.15, 58.1], color: "#8a7045" },
-  ivanovo: { name: "Ивановская область", label: [41.6, 57.05], color: "#5a719a" },
-  nizhny: { name: "Нижегородская область", label: [44.15, 56.15], color: "#9a5f45" },
+const regionMeta: Record<RegionId, { name: string; color: string }> = {
+  moscow: { name: "Московская область", color: "#245eb7" },
+  tver: { name: "Тверская область", color: "#327a76" },
+  vladimir: { name: "Владимирская область", color: "#8c5d9e" },
+  kaluga: { name: "Калужская область", color: "#aa6c3b" },
+  tula: { name: "Тульская область", color: "#ad4e53" },
+  ryazan: { name: "Рязанская область", color: "#387a9b" },
+  yaroslavl: { name: "Ярославская область", color: "#6c7d35" },
+  smolensk: { name: "Смоленская область", color: "#4f7598" },
+  kostroma: { name: "Костромская область", color: "#8a7045" },
+  ivanovo: { name: "Ивановская область", color: "#5a719a" },
+  nizhny: { name: "Нижегородская область", color: "#9a5f45" },
 };
 const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь", "Тверь", "Ржев", "Вышний Волочёк", "Кимры", "Торжок", "Конаково", "Удомля", "Владимир", "Ковров", "Муром", "Александров", "Гусь-Хрустальный", "Вязники", "Кольчугино", "Калуга", "Обнинск", "Людиново", "Киров", "Тула", "Новомосковск", "Алексин", "Щёкино", "Рязань", "Касимов", "Скопин", "Сасово", "Ярославль", "Рыбинск", "Переславль-Залесский", "Тутаев", "Смоленск", "Вязьма", "Рославль", "Ярцево", "Кострома", "Буй", "Галич", "Шарья", "Иваново", "Кинешма", "Шуя", "Вичуга", "Нижний Новгород", "Дзержинск", "Арзамас", "Саров"]);
 const cityColors = ["#0077b6", "#00a896", "#7b2cbf", "#ef476f", "#e76f51", "#f4a261", "#6a994e", "#5e60ce", "#c1121f", "#577590", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93", "#ff595e", "#2a9d8f", "#8338ec", "#118ab2", "#e63946", "#3a86ff", "#588157", "#f77f00", "#a44a3f", "#4361ee"];
@@ -176,14 +176,18 @@ export function PopulationMap() {
     const regionalFrame = { type: "FeatureCollection", features } as unknown as d3.ExtendedFeatureCollection;
     const projection = d3.geoConicConformal().parallels([54.5, 57.5]).rotate([-37.5, 0]).fitExtent([[44, 22], [956, 566]], regionalFrame);
     const path = d3.geoPath(projection);
-    const regionLayers = (Object.entries(regionMeta) as [RegionId, { name: string; label: Position; color: string }][]).map(([region, meta]) => {
+    const regionLayers = (Object.entries(regionMeta) as [RegionId, { name: string; color: string }][]).map(([region, meta]) => {
       const regionFeatures = features.filter((feature) => feature.properties.region === region);
       const collection = { type: "FeatureCollection", features: regionFeatures } as unknown as d3.ExtendedFeatureCollection;
       const population = d3.sum(regionFeatures, (feature) => feature.properties.population);
       const area = d3.sum(regionFeatures, (feature) => feature.properties.area);
       return { region, name: meta.name, color: meta.color, d: path(collection) ?? "", population, area, density: population / area, municipalities: regionFeatures.length } as RegionLayer;
     });
-    const regionLabels = regionLayers.map((layer) => ({ region: layer.region, name: layer.name, coordinates: projection(regionMeta[layer.region].label) ?? [0, 0] }));
+    const regionLabels = regionLayers.map((layer) => {
+      const regionFeatures = features.filter((feature) => feature.properties.region === layer.region);
+      const collection = { type: "FeatureCollection", features: regionFeatures } as unknown as d3.ExtendedFeatureCollection;
+      return { region: layer.region, name: layer.name, coordinates: path.centroid(collection) };
+    });
     const cities = rawData.flatMap((regionalData) => regionalData.cities.map((city) => ({ ...city, region: regionalData.region }))).filter((city) => cityNames.has(city.name)).toSorted((a, b) => b.population - a.population).map((city, index) => {
       const district = features.find((feature) => d3.geoContains(feature as d3.ExtendedFeature, city.coordinates));
       const [sx, sy] = projection(city.coordinates) ?? [0, 0];
