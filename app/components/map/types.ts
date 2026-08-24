@@ -17,3 +17,4 @@ export type RegionLayer = { region: RegionId; name: string; color: string; d: st
 export type CandidateDefinition = { id: string; region: RegionId; city: string; district: string; road: string; roadDistance: string; coverage: string; demand: number; lastMile: number; transport: number; site: number; constraints: number };
 export type ScoreBreakdown = { label: string; value: number; weight: number; contribution: number };
 export type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number; breakdown: ScoreBreakdown[] };
+export type CandidateCluster = { id: string; x: number; y: number; candidates: Candidate[]; containsSelected: boolean };
