@@ -1,0 +1,11 @@
+{
+  "provider": "OpenStreetMap",
+  "dataset": "Municipalities of Russia 2025",
+  "url": "https://huggingface.co/datasets/salnsg/Rus_MO/resolve/main/Municipalities_Russia_2025%20%28geojson%29.zip?download=true",
+  "retrievedAt": "2026-08-24",
+  "sourceChecksum": "sha256:bffd1f33780f4f54154d001e3f08d8bf5ad26f8de70a4c8c064b7b530a087cb0",
+  "coordinateSystem": "EPSG:3857",
+  "outputCoordinateSystem": "WGS 84",
+  "simplificationToleranceMeters": 250,
+  "note": "Исходный слой основан на OpenStreetMap. Перед публикацией координаты преобразованы в WGS 84 и упрощены для веб-карты."
+}

@@ -20,7 +20,7 @@ export function parseCsv(text) {
   return lines.map((line, index) => {
     const [region_id, rosstat_name, municipality_type, populationText, as_of, indicator_code] = line.split(";").map((value) => value.trim());
     const population = Number(populationText);
-    const key = `${region_id}:${normalizeName(rosstat_name)}`;
+    const key = `${region_id}:${rosstat_name.toLowerCase()}`;
     if (!region_id || !rosstat_name || !municipality_type || !Number.isSafeInteger(population) || population <= 0 || as_of !== "2025-01-01" || indicator_code !== "8112027") throw new Error(`Некорректная строка CSV ${index + 2}`);
     if (seen.has(key)) throw new Error(`Повторная строка Росстата: ${key}`);
     seen.add(key);
@@ -30,20 +30,28 @@ export function parseCsv(text) {
 
 export function buildUpdatePlan(documents, rows, aliases, source) {
   if (source.provider !== "Росстат" || source.dataset !== "БД ПМО" || source.indicatorCode !== "8112027" || source.asOf !== "2025-01-01") throw new Error("Некорректные метаданные источника");
-  const rowsByKey = new Map(rows.map((row) => [`${row.region_id}:${normalizeName(row.rosstat_name)}`, row]));
+  const rowsByExactName = new Map(rows.map((row) => [`${row.region_id}:${row.rosstat_name.toLowerCase()}`, row]));
+  const rowsByNormalizedName = new Map();
+  for (const row of rows) {
+    const key = `${row.region_id}:${normalizeName(row.rosstat_name)}`;
+    rowsByNormalizedName.set(key, [...(rowsByNormalizedName.get(key) ?? []), row]);
+  }
   const usedRows = new Set();
   const updates = [];
   for (const document of documents) {
     const featureKeys = new Set();
     const updatedFeatures = document.data.geography.features.map((feature) => {
-      const alias = aliases[`${document.region}:${feature.properties.name}`] ?? feature.properties.name;
-      const key = `${document.region}:${normalizeName(alias)}`;
-      if (featureKeys.has(key)) throw new Error(`Два контура претендуют на одну строку: ${key}`);
-      featureKeys.add(key);
-      const row = rowsByKey.get(key);
+      const alias = aliases[`${document.region}:${feature.properties.name}`] ?? feature.properties.rosstatName ?? feature.properties.name;
+      const exactKey = `${document.region}:${alias.toLowerCase()}`;
+      const normalizedKey = `${document.region}:${normalizeName(alias)}`;
+      const normalizedRows = rowsByNormalizedName.get(normalizedKey) ?? [];
+      const row = rowsByExactName.get(exactKey) ?? (normalizedRows.length === 1 ? normalizedRows[0] : null);
       if (!row) throw new Error(`Не найдена строка Росстата для контура: ${document.region}:${feature.properties.name}`);
-      if (usedRows.has(key)) throw new Error(`Строка Росстата использована повторно: ${key}`);
-      usedRows.add(key);
+      const rowKey = `${row.region_id}:${row.rosstat_name.toLowerCase()}`;
+      if (featureKeys.has(rowKey)) throw new Error(`Два контура претендуют на одну строку: ${rowKey}`);
+      featureKeys.add(rowKey);
+      if (usedRows.has(rowKey)) throw new Error(`Строка Росстата использована повторно: ${rowKey}`);
+      usedRows.add(rowKey);
       return { ...feature, properties: { ...feature.properties, population: row.population } };
     });
     const beforeGeometry = createHash("sha256").update(JSON.stringify(document.data.geography.features.map((feature) => feature.geometry))).digest("hex");
@@ -53,7 +61,7 @@ export function buildUpdatePlan(documents, rows, aliases, source) {
     updates.push({ ...document, data: nextData, matched: updatedFeatures.length, population: updatedFeatures.reduce((sum, feature) => sum + feature.properties.population, 0) });
   }
   if (usedRows.size !== rows.length) {
-    const unused = [...rowsByKey.keys()].filter((key) => !usedRows.has(key));
+    const unused = [...rowsByExactName.keys()].filter((key) => !usedRows.has(key));
     throw new Error(`Есть строки Росстата без контура: ${unused.join(", ")}`);
   }
   return updates;
