@@ -9,7 +9,7 @@
 
 .simple-map-frame, .map-area { overflow: hidden; }
 .simple-map-frame { position: relative; }
-.zoomable-map { transform-origin: center center; transition: transform .16s ease-out; cursor: zoom-in; touch-action: none; }
+.zoomable-map { transform-origin: center center; transition: transform .16s ease-out; cursor: zoom-in; touch-action: none; will-change: transform; backface-visibility: hidden; }
 .zoomable-map.dragging { cursor: grabbing; transition: none; }
 .zoom-controls { position: absolute; z-index: 4; top: 18px; left: 18px; display: grid; overflow: hidden; border: 1px solid #c9d3e2; background: white; box-shadow: 0 2px 8px rgba(32,62,113,.12); }
 .zoom-controls button { width: 31px; height: 30px; border: 0; border-bottom: 1px solid #dce3ed; background: white; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }

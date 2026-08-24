@@ -4,6 +4,7 @@ import * as d3 from "d3";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Position = [number, number];
+type MapViewport = { scale: number; x: number; y: number };
 type View = "density" | "population" | "placement";
 type RegionId = "moscow" | "tver" | "vladimir" | "kaluga" | "tula" | "ryazan" | "yaroslavl" | "smolensk" | "kostroma" | "ivanovo" | "nizhny";
 type Geometry = { type: string; coordinates: number[][][] | number[][][][] };
@@ -133,9 +134,14 @@ export function PopulationMap() {
   const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null);
   const [selectedCityName, setSelectedCityName] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState("moscow-podolsk");
-  const [mapViewport, setMapViewport] = useState({ scale: 1, x: 0, y: 0 });
+  const [mapViewport, setMapViewport] = useState<MapViewport>({ scale: 1, x: 0, y: 0 });
   const [isDraggingMap, setIsDraggingMap] = useState(false);
-  const dragStart = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null);
+  const dragStart = useRef<{ pointerX: number; pointerY: number; x: number; y: number; moved: boolean } | null>(null);
+  const suppressMapClick = useRef(false);
+  const mapRef = useRef<SVGSVGElement | null>(null);
+  const viewportRef = useRef<MapViewport>(mapViewport);
+  const pendingViewport = useRef<MapViewport | null>(null);
+  const transformFrame = useRef<number | null>(null);
   const [demandWeight, setDemandWeight] = useState(30);
   const [lastMileWeight, setLastMileWeight] = useState(25);
   const [transportWeight, setTransportWeight] = useState(20);
@@ -164,6 +170,10 @@ export function PopulationMap() {
       return { ...(await response.json() as MapData), region } as RegionMapData;
     })).then(setRawData).catch((error: unknown) => { if (error instanceof Error && error.name !== "AbortError") console.error("Could not load map data", error); });
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => () => {
+    if (transformFrame.current !== null) cancelAnimationFrame(transformFrame.current);
   }, []);
 
   const model = useMemo(() => {
@@ -231,26 +241,58 @@ export function PopulationMap() {
     const limit = (scale - 1) * (axis === "x" ? 260 : 165);
     return Math.max(-limit, Math.min(limit, value));
   };
-  const changeZoom = (amount: number) => setMapViewport((current) => {
+  const formatViewportTransform = (viewport: MapViewport) => `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
+  const applyViewportTransform = (viewport: MapViewport) => { if (mapRef.current) mapRef.current.style.transform = formatViewportTransform(viewport); };
+  const scheduleViewportTransform = (viewport: MapViewport) => {
+    viewportRef.current = viewport;
+    pendingViewport.current = viewport;
+    if (transformFrame.current !== null) return;
+    transformFrame.current = requestAnimationFrame(() => {
+      if (pendingViewport.current) applyViewportTransform(pendingViewport.current);
+      pendingViewport.current = null;
+      transformFrame.current = null;
+    });
+  };
+  const commitViewport = (viewport: MapViewport) => {
+    viewportRef.current = viewport;
+    pendingViewport.current = null;
+    if (transformFrame.current !== null) { cancelAnimationFrame(transformFrame.current); transformFrame.current = null; }
+    applyViewportTransform(viewport);
+    setMapViewport(viewport);
+  };
+  const changeZoom = (amount: number) => {
+    const current = viewportRef.current;
     const scale = Math.max(1, Math.min(3, Number((current.scale + amount).toFixed(1))));
-    return { scale, x: clampOffset(current.x, scale, "x"), y: clampOffset(current.y, scale, "y") };
-  });
+    commitViewport({ scale, x: clampOffset(current.x, scale, "x"), y: clampOffset(current.y, scale, "y") });
+  };
+  const resetMapViewport = () => commitViewport({ scale: 1, x: 0, y: 0 });
   const handleWheelZoom = (event: React.WheelEvent<SVGSVGElement>) => { event.preventDefault(); changeZoom(event.deltaY < 0 ? .2 : -.2); };
   const startMapDrag = (event: React.PointerEvent<SVGSVGElement>) => {
     const target = event.target as Element;
-    if (target.closest(".city-marker, .candidate-marker, .municipality")) return;
-    if (mapViewport.scale === 1) return;
+    if (target.closest(".city-marker, .candidate-marker")) return;
+    const viewport = viewportRef.current;
+    if (viewport.scale === 1) return;
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragStart.current = { pointerX: event.clientX, pointerY: event.clientY, x: mapViewport.x, y: mapViewport.y };
+    dragStart.current = { pointerX: event.clientX, pointerY: event.clientY, x: viewport.x, y: viewport.y, moved: false };
     setIsDraggingMap(true);
   };
   const moveMapDrag = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!dragStart.current) return;
-    const x = clampOffset(dragStart.current.x + event.clientX - dragStart.current.pointerX, mapViewport.scale, "x");
-    const y = clampOffset(dragStart.current.y + event.clientY - dragStart.current.pointerY, mapViewport.scale, "y");
-    setMapViewport((current) => ({ ...current, x, y }));
+    const pointerX = event.clientX - dragStart.current.pointerX;
+    const pointerY = event.clientY - dragStart.current.pointerY;
+    if (Math.hypot(pointerX, pointerY) > 4) dragStart.current.moved = true;
+    const scale = viewportRef.current.scale;
+    const x = clampOffset(dragStart.current.x + pointerX, scale, "x");
+    const y = clampOffset(dragStart.current.y + pointerY, scale, "y");
+    scheduleViewportTransform({ scale, x, y });
   };
-  const endMapDrag = () => { dragStart.current = null; setIsDraggingMap(false); };
+  const endMapDrag = () => { suppressMapClick.current = dragStart.current?.moved ?? false; dragStart.current = null; commitViewport(viewportRef.current); setIsDraggingMap(false); };
+  const selectMunicipality = (key: string) => {
+    if (suppressMapClick.current) { suppressMapClick.current = false; return; }
+    setSelectedMunicipality(key);
+    setSelectedCityName(null);
+  };
   const toggleMapCity = (city: CityMetric) => { setSelectedCityName((current) => current === city.name ? null : city.name); setSelectedMunicipality(null); };
   const simpleTitle = selectedMapCity ? `${selectedMapCity.name} · город` : selectedFeature ? `${selectedFeature.properties.name} · ${regionMeta[selectedFeature.properties.region].name}` : "Одиннадцать областей Центральной России";
   const simplePopulation = selectedMapCity ? `${formatNumber(selectedMapCity.population)} чел.` : selectedFeature ? `${formatNumber(selectedFeature.properties.population)} чел.` : `${formatNumber(d3.sum(model.features, (feature) => feature.properties.population))} чел.`;
@@ -276,32 +318,32 @@ export function PopulationMap() {
       </aside>
       <section className="map-area" aria-label="Карта кандидатов и ключевых дорог одиннадцати областей">
         <div className="map-toolbar"><b>2. Изучите транспортные коридоры</b><span className="muted">нажмите на точку или строку кандидата</span></div>
-        <svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта одиннадцати областей Центральной России с кандидатами и ключевыми автомобильными дорогами">
+        <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта одиннадцати областей Центральной России с кандидатами и ключевыми автомобильными дорогами">
           <defs><pattern id="map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern>{model.regionLayers.map((region) => <filter key={`filter-${region.region}`} id={`region-border-${region.region}`} x="-3%" y="-3%" width="106%" height="106%"><feMorphology in="SourceAlpha" operator="dilate" radius="0.8" result="expanded" /><feComposite in="expanded" in2="SourceAlpha" operator="out" result="outer-border" /><feFlood floodColor={region.color} floodOpacity=".9" result="border-color" /><feComposite in="border-color" in2="outer-border" operator="in" /></filter>)}</defs>
           <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" className="map-grid" />
           {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className="municipality" />)}
           {model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className="region-tint" />)}
-          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className="region-outline" filter={`url(#region-border-${region.region})`}>{model.features.filter((feature) => feature.properties.region === region.region).map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill="#000" />)}</g>)}
+          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className="region-outline" filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}
           {roadLines.map((road) => <path key={road.name} d={road.d ?? undefined} className={`road-line ${road.type}`} />)}
           {model.regionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}
           {model.ranked.map((candidate, index) => <g key={candidate.id} className={candidate.id === selected.id ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCandidate(candidate.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCandidate(candidate.id); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}
         </svg>
-        <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div>
+        <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={resetMapViewport} aria-label="Сбросить масштаб">⌂</button></div>
         <div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Контекст карты</b><span><i className="region-swatch" />Контуры областей</span><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />Кольцевые и Р-132</span><span><i className="city-swatch" />Кандидаты БПЛА</span><small>Одиннадцать областей · {model.features.length} муниципалитетов</small></div></div>
       </section>
       <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{model.ranked.findIndex((candidate) => candidate.id === selected.id) + 1} · {selected.score >= minimumScore ? "проходит порог" : "ниже порога"}</span><h2>{selected.city}</h2><p>{selected.district} · {regionMeta[selected.region].name}</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="score-breakdown"><h3>Что формирует рейтинг</h3>{selected.breakdown.map((factor) => <div className="factor-row" key={factor.label}><span>{factor.label}</span><div aria-label={`${factor.label}: ${Math.round(factor.value)} из 100`}><i style={{ width: `${factor.value}%` }} /></div><b>{Math.round(factor.value)}</b><small>вес {factor.weight}%</small></div>)}</div><div className="why"><h3>Следующий шаг</h3><p>Проверьте актуальные запретные зоны, статус земли, подключение к электросети и точное время обслуживания. Только после этого площадку можно утверждать.</p></div></section>
     </section> : <section className="simple-workspace" aria-label="Карта населения одиннадцати областей">
       <div className="simple-map-frame">
-        <svg className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: `translate(${mapViewport.x}px, ${mapViewport.y}px) scale(${mapViewport.scale})` }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты одиннадцати областей Центральной России по показателю: ${view === "density" ? "плотность" : "население"}`}>
+        <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты одиннадцати областей Центральной России по показателю: ${view === "density" ? "плотность" : "население"}`}>
           <defs><pattern id="simple-map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern>{model.regionLayers.map((region) => <filter key={`filter-${region.region}`} id={`region-border-${region.region}`} x="-3%" y="-3%" width="106%" height="106%"><feMorphology in="SourceAlpha" operator="dilate" radius="0.8" result="expanded" /><feComposite in="expanded" in2="SourceAlpha" operator="out" result="outer-border" /><feFlood floodColor={region.color} floodOpacity=".9" result="border-color" /><feComposite in="border-color" in2="outer-border" operator="in" /></filter>)}</defs>
           <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" fill="url(#simple-map-grid)" className="map-grid" />
-          {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={selectedFeature?.properties.key === feature.properties.key ? "municipality selected" : "municipality"} role="button" tabIndex={0} aria-label={`${feature.properties.name}, ${regionMeta[feature.properties.region].name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => { setSelectedMunicipality(feature.properties.key); setSelectedCityName(null); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedMunicipality(feature.properties.key); setSelectedCityName(null); } }} />)}
+          {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={selectedFeature?.properties.key === feature.properties.key ? "municipality selected" : "municipality"} role="button" tabIndex={0} aria-label={`${feature.properties.name}, ${regionMeta[feature.properties.region].name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => selectMunicipality(feature.properties.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMunicipality(feature.properties.key); } }} />)}
           {model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className="region-tint" />)}
-          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className="region-outline" filter={`url(#region-border-${region.region})`}>{model.features.filter((feature) => feature.properties.region === region.region).map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill="#000" />)}</g>)}
+          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className="region-outline" filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}
           {model.regionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}
           {visibleCities.map((city) => <g key={`${city.region}:${city.name}`}><line x1={city.sx} y1={city.sy} x2={city.x} y2={city.y} stroke={city.color} className="city-leader" /><circle cx={city.sx} cy={city.sy} r="3" fill={city.color} /><g transform={`translate(${city.x}, ${city.y})`} className={selectedMapCity?.name === city.name ? "city-marker selected" : "city-marker"} role="button" tabIndex={0} aria-label={`${city.index}. ${city.name}, ${city.regionName}: ${formatNumber(city.population)} жителей`} onClick={(event) => { event.stopPropagation(); toggleMapCity(city); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleMapCity(city); } }}><circle r="10" fill={city.color} /><text>{city.index}</text></g></g>)}
         </svg>
-        <div className="simple-zoom-controls zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={() => setMapViewport({ scale: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб">⌂</button></div>
+        <div className="simple-zoom-controls zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={resetMapViewport} aria-label="Сбросить масштаб">⌂</button></div>
         <p>Колесо мыши меняет масштаб. После приближения зажмите карту и перетаскивайте её. Нажмите на муниципалитет или номер города, чтобы увидеть информацию.</p>
       </div>
       <aside className="simple-side">
