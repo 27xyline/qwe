@@ -1,6 +1,9 @@
 export type Position = [number, number];
 export type MapViewport = { scale: number; x: number; y: number };
 export type View = "density" | "population" | "placement";
+export type MapLayer = "boundaries" | "cities" | "roads" | "candidates";
+export type LayerVisibility = Record<MapLayer, boolean>;
+export type LayerVisibilityByView = Record<View, LayerVisibility>;
 export type RegionId = "moscow" | "tver" | "vladimir" | "kaluga" | "tula" | "ryazan" | "yaroslavl" | "smolensk" | "kostroma" | "ivanovo" | "nizhny" | "vologda" | "bryansk" | "oryol" | "lipetsk" | "tambov" | "mordovia" | "chuvashia";
 export type RegionFilter = RegionId | "all";
 export type Geometry = { type: string; coordinates: number[][][] | number[][][][] };
