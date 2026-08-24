@@ -325,11 +325,12 @@ export function PopulationMap() {
   const simpleTitle = selectedMapCity ? `${selectedMapCity.name} · город` : selectedFeature ? `${selectedFeature.properties.name} · ${regionMeta[selectedFeature.properties.region].name}` : "Восемнадцать регионов Центральной России и Поволжья";
   const simplePopulation = selectedMapCity ? `${formatNumber(selectedMapCity.population)} чел.` : selectedFeature ? `${formatNumber(selectedFeature.properties.population)} чел.` : `${formatNumber(d3.sum(model.features, (feature) => feature.properties.population))} чел.`;
   const simpleDensity = selectedMapCity ? `${formatNumber(selectedMapCity.districtDensity)} чел./км²` : selectedFeature ? `${formatNumber(selectedFeature.properties.density)} чел./км²` : "Выберите муниципалитет или город";
+  const dataSourceLabel = rawData[0]?.source ? `${rawData[0].source.provider} · ${rawData[0].source.dataset} · данные на 01.01.2025` : "Данные на 01.01.2025 · муниципалитеты и крупнейшие города";
 
   return <main className={isPlacement ? "app-shell placement-page" : "app-shell"}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark">●●●</span><span>Население восемнадцати регионов</span></div>
-      <div className="source-line">Данные на 01.01.2025 · муниципалитеты и крупнейшие города</div>
+      <div className="source-line">{dataSourceLabel}</div>
       <RegionFilter value={selectedRegion} regions={regionOptions} onChange={handleRegionChange} />
       <nav className="metric-switch" aria-label="Режим карты">
         <button type="button" aria-pressed={view === "density"} onClick={() => setView("density")}>Плотность</button>
