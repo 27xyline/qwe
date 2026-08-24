@@ -1,0 +1,16 @@
+export type Position = [number, number];
+export type MapViewport = { scale: number; x: number; y: number };
+export type View = "density" | "population" | "placement";
+export type RegionId = "moscow" | "tver" | "vladimir" | "kaluga" | "tula" | "ryazan" | "yaroslavl" | "smolensk" | "kostroma" | "ivanovo" | "nizhny" | "vologda" | "bryansk" | "oryol" | "lipetsk" | "tambov" | "mordovia" | "chuvashia";
+export type RegionFilter = RegionId | "all";
+export type Geometry = { type: string; coordinates: number[][][] | number[][][][] };
+export type Municipality = { type: "Feature"; properties: { name: string; population: number }; geometry: Geometry };
+export type City = { name: string; population: number; coordinates: Position };
+export type MapData = { updatedAt: string; geography: { type: "FeatureCollection"; features: Municipality[] }; cities: City[] };
+export type RegionMapData = MapData & { region: RegionId };
+export type MunicipalityMetric = Municipality & { properties: Municipality["properties"] & { region: RegionId; key: string; area: number; density: number } };
+export type CityMetric = City & { region: RegionId; regionName: string; index: number; color: string; district: string; districtDensity: number; sx: number; sy: number; x: number; y: number };
+export type RegionLayer = { region: RegionId; name: string; color: string; d: string; population: number; area: number; density: number; municipalities: number };
+export type CandidateDefinition = { id: string; region: RegionId; city: string; district: string; road: string; roadDistance: string; coverage: string; demand: number; lastMile: number; transport: number; site: number; constraints: number };
+export type ScoreBreakdown = { label: string; value: number; weight: number; contribution: number };
+export type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number; breakdown: ScoreBreakdown[] };
