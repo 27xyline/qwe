@@ -2,43 +2,11 @@
 
 import * as d3 from "d3";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RegionFilter } from "./map/RegionFilter";
+import { regionMeta, regionSources } from "./map/config";
+import { getSelectedCandidateIdForRegion, getVisibleCandidates, getVisibleCities, getVisibleRegionLabels } from "./map/selectors";
+import type { Candidate, CandidateDefinition, CityMetric, Geometry, MapData, MapViewport, MunicipalityMetric, Position, RegionFilter as RegionFilterValue, RegionId, RegionLayer, RegionMapData, View } from "./map/types";
 
-type Position = [number, number];
-type MapViewport = { scale: number; x: number; y: number };
-type View = "density" | "population" | "placement";
-type RegionId = "moscow" | "tver" | "vladimir" | "kaluga" | "tula" | "ryazan" | "yaroslavl" | "smolensk" | "kostroma" | "ivanovo" | "nizhny" | "vologda" | "bryansk" | "oryol" | "lipetsk" | "tambov" | "mordovia" | "chuvashia";
-type Geometry = { type: string; coordinates: number[][][] | number[][][][] };
-type Municipality = { type: "Feature"; properties: { name: string; population: number }; geometry: Geometry };
-type City = { name: string; population: number; coordinates: Position };
-type MapData = { updatedAt: string; geography: { type: "FeatureCollection"; features: Municipality[] }; cities: City[] };
-type RegionMapData = MapData & { region: RegionId };
-type MunicipalityMetric = Municipality & { properties: Municipality["properties"] & { region: RegionId; key: string; area: number; density: number } };
-type CityMetric = City & { region: RegionId; regionName: string; index: number; color: string; district: string; districtDensity: number; sx: number; sy: number; x: number; y: number };
-type RegionLayer = { region: RegionId; name: string; color: string; d: string; population: number; area: number; density: number; municipalities: number };
-type CandidateDefinition = { id: string; region: RegionId; city: string; district: string; road: string; roadDistance: string; coverage: string; demand: number; lastMile: number; transport: number; site: number; constraints: number };
-type ScoreBreakdown = { label: string; value: number; weight: number; contribution: number };
-type Candidate = CandidateDefinition & { coordinates: Position; sx: number; sy: number; score: number; breakdown: ScoreBreakdown[] };
-
-const regionMeta: Record<RegionId, { name: string; color: string }> = {
-  moscow: { name: "Московская область", color: "#245eb7" },
-  tver: { name: "Тверская область", color: "#327a76" },
-  vladimir: { name: "Владимирская область", color: "#8c5d9e" },
-  kaluga: { name: "Калужская область", color: "#aa6c3b" },
-  tula: { name: "Тульская область", color: "#ad4e53" },
-  ryazan: { name: "Рязанская область", color: "#387a9b" },
-  yaroslavl: { name: "Ярославская область", color: "#6c7d35" },
-  smolensk: { name: "Смоленская область", color: "#4f7598" },
-  kostroma: { name: "Костромская область", color: "#8a7045" },
-  ivanovo: { name: "Ивановская область", color: "#5a719a" },
-  nizhny: { name: "Нижегородская область", color: "#9a5f45" },
-  vologda: { name: "Вологодская область", color: "#4e8696" },
-  bryansk: { name: "Брянская область", color: "#9a6942" },
-  oryol: { name: "Орловская область", color: "#857443" },
-  lipetsk: { name: "Липецкая область", color: "#a65f53" },
-  tambov: { name: "Тамбовская область", color: "#5c7d5c" },
-  mordovia: { name: "Республика Мордовия", color: "#a9697e" },
-  chuvashia: { name: "Чувашская Республика", color: "#5077a5" },
-};
 const cityNames = new Set(["Балашиха", "Ногинск", "Подольск", "Химки", "Люберцы", "Мытищи", "Одинцово", "Красногорск", "Щёлково", "Электросталь", "Тверь", "Ржев", "Вышний Волочёк", "Кимры", "Торжок", "Конаково", "Удомля", "Владимир", "Ковров", "Муром", "Александров", "Гусь-Хрустальный", "Вязники", "Кольчугино", "Калуга", "Обнинск", "Людиново", "Киров", "Тула", "Новомосковск", "Алексин", "Щёкино", "Рязань", "Касимов", "Скопин", "Сасово", "Ярославль", "Рыбинск", "Переславль-Залесский", "Тутаев", "Смоленск", "Вязьма", "Рославль", "Ярцево", "Кострома", "Буй", "Галич", "Шарья", "Иваново", "Кинешма", "Шуя", "Вичуга", "Нижний Новгород", "Дзержинск", "Арзамас", "Саров", "Вологда", "Череповец", "Великий Устюг", "Сокол", "Брянск", "Клинцы", "Новозыбков", "Стародуб", "Орёл", "Ливны", "Мценск", "Липецк", "Елец", "Грязи", "Тамбов", "Мичуринск", "Моршанск", "Саранск", "Рузаевка", "Ковылкино", "Чебоксары", "Новочебоксарск", "Канаш"]);
 const cityColors = ["#0077b6", "#00a896", "#7b2cbf", "#ef476f", "#e76f51", "#f4a261", "#6a994e", "#5e60ce", "#c1121f", "#577590", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93", "#ff595e", "#2a9d8f", "#8338ec", "#118ab2", "#e63946", "#3a86ff", "#588157", "#f77f00", "#a44a3f", "#4361ee"];
 const candidates: CandidateDefinition[] = [
@@ -154,6 +122,7 @@ function RegionLabel({ name, coordinates }: { name: string; coordinates: [number
 export function PopulationMap() {
   const [rawData, setRawData] = useState<RegionMapData[] | null>(null);
   const [view, setView] = useState<View>("density");
+  const [selectedRegion, setSelectedRegion] = useState<RegionFilterValue>("all");
   const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null);
   const [selectedCityName, setSelectedCityName] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState("moscow-podolsk");
@@ -174,26 +143,7 @@ export function PopulationMap() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const sources: { path: string; region: RegionId }[] = [
-      { path: "/data/moscow-oblast-municipalities.json", region: "moscow" },
-      { path: "/data/tver-oblast-municipalities.json", region: "tver" },
-      { path: "/data/vladimir-oblast-municipalities.json", region: "vladimir" },
-      { path: "/data/kaluga-oblast-municipalities.json", region: "kaluga" },
-      { path: "/data/tula-oblast-municipalities.json", region: "tula" },
-      { path: "/data/ryazan-oblast-municipalities.json", region: "ryazan" },
-      { path: "/data/yaroslavl-oblast-municipalities.json", region: "yaroslavl" },
-      { path: "/data/smolensk-oblast-municipalities.json", region: "smolensk" },
-      { path: "/data/kostroma-oblast-municipalities.json", region: "kostroma" },
-      { path: "/data/ivanovo-oblast-municipalities.json", region: "ivanovo" },
-      { path: "/data/nizhny-novgorod-oblast-municipalities.json", region: "nizhny" },
-      { path: "/data/vologda-oblast-municipalities.json", region: "vologda" },
-      { path: "/data/bryansk-oblast-municipalities.json", region: "bryansk" },
-      { path: "/data/oryol-oblast-municipalities.json", region: "oryol" },
-      { path: "/data/lipetsk-oblast-municipalities.json", region: "lipetsk" },
-      { path: "/data/tambov-oblast-municipalities.json", region: "tambov" },
-      { path: "/data/mordovia-municipalities.json", region: "mordovia" },
-      { path: "/data/chuvashia-municipalities.json", region: "chuvashia" },
-    ];
+    const sources = regionSources;
     Promise.all(sources.map(async ({ path, region }) => {
       const response = await fetch(path, { signal: controller.signal });
       if (!response.ok) throw new Error(`Could not load ${path}`);
@@ -255,17 +205,32 @@ export function PopulationMap() {
     return { features, path, projection, regionLabels, regionLayers, cities, ranked, scales: { population: d3.scaleSequentialLog([d3.min(population) ?? 1, d3.max(population) ?? 1], d3.interpolateYlGnBu), density: d3.scaleSequentialLog([Math.max(1, d3.min(density) ?? 1), d3.max(density) ?? 1], d3.interpolateYlGnBu) } };
   }, [rawData, demandWeight, lastMileWeight, transportWeight, siteWeight, constraintWeight]);
 
+  const handleRegionChange = (nextRegion: RegionFilterValue) => {
+    setSelectedRegion(nextRegion);
+    if (nextRegion === "all") return;
+
+    if (selectedMunicipality && !selectedMunicipality.startsWith(`${nextRegion}:`)) setSelectedMunicipality(null);
+    if (!model.cities.some((city) => city.region === nextRegion && city.name === selectedCityName)) setSelectedCityName(null);
+
+    const nextCandidateId = getSelectedCandidateIdForRegion(model.ranked, selectedCandidate, nextRegion);
+    if (nextCandidateId !== selectedCandidate && nextCandidateId) setSelectedCandidate(nextCandidateId);
+  };
+
   if (!model || !rawData) return <div className="map-loading">Загружаем карту и данные…</div>;
   const isPlacement = view === "placement";
   const activeScale = model.scales[view === "population" ? "population" : "density"];
   const domain = activeScale.domain(); const legendValues = d3.range(5).map((index) => domain[0] * (domain[1] / domain[0]) ** (index / 4));
+  const regionOptions = (Object.entries(regionMeta) as [RegionId, { name: string; color: string }][]).map(([id, region]) => ({ id, name: region.name })).toSorted((first, second) => first.name.localeCompare(second.name, "ru"));
+  const visibleRankedCandidates = getVisibleCandidates(model.ranked, selectedRegion);
+  const visibleMapCities = getVisibleCities(model.cities, selectedRegion);
+  const visibleCities = visibleMapCities.slice(0, 12);
+  const visibleRegionLabels = getVisibleRegionLabels(model.regionLabels, selectedRegion);
   const selectedFeature = model.features.find((feature) => feature.properties.key === selectedMunicipality);
-  const selectedMapCity = model.cities.find((city) => city.name === selectedCityName);
-  const visibleCities = model.cities.slice(0, 12);
+  const selectedMapCity = visibleMapCities.find((city) => city.name === selectedCityName);
   const focusedRegion = selectedFeature?.properties.region ?? selectedMapCity?.region;
   const focusedRegionStats = focusedRegion ? model.regionLayers.find((region) => region.region === focusedRegion) : null;
-  const selected = model.ranked.find((candidate) => candidate.id === selectedCandidate) ?? model.ranked[0];
-  const eligibleCandidates = model.ranked.filter((candidate) => candidate.score >= minimumScore);
+  const selected = visibleRankedCandidates.find((candidate) => candidate.id === selectedCandidate) ?? visibleRankedCandidates[0] ?? model.ranked[0];
+  const eligibleCandidates = visibleRankedCandidates.filter((candidate) => candidate.score >= minimumScore);
   const roadLines = keyRoads.map((road) => ({ ...road, d: d3.line<Position>().x((point) => model.projection(point)?.[0] ?? 0).y((point) => model.projection(point)?.[1] ?? 0)(road.points) }));
   const clampOffset = (value: number, scale: number, axis: "x" | "y") => {
     const limit = (scale - 1) * (axis === "x" ? 260 : 165);
@@ -332,6 +297,7 @@ export function PopulationMap() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark">●●●</span><span>Население восемнадцати регионов</span></div>
       <div className="source-line">Данные на 01.01.2025 · муниципалитеты и крупнейшие города</div>
+      <RegionFilter value={selectedRegion} regions={regionOptions} onChange={handleRegionChange} />
       <nav className="metric-switch" aria-label="Режим карты">
         <button type="button" aria-pressed={view === "density"} onClick={() => setView("density")}>Плотность</button>
         <button type="button" aria-pressed={view === "population"} onClick={() => setView("population")}>Население</button>
@@ -344,33 +310,33 @@ export function PopulationMap() {
         <Slider label="Спрос на доставку" value={demandWeight} onChange={setDemandWeight} /><Slider label="Эффект последней мили" value={lastMileWeight} onChange={setLastMileWeight} /><Slider label="Транспорт и логистика" value={transportWeight} onChange={setTransportWeight} /><Slider label="Пригодность площадки" value={siteWeight} onChange={setSiteWeight} /><Slider label="Отсутствие ограничений" value={constraintWeight} onChange={setConstraintWeight} />
         <label className="threshold-control"><span>Минимальный рейтинг для отбора</span><output>{minimumScore} баллов</output><input aria-label="Минимальный рейтинг для отбора" type="range" min="0" max="100" value={minimumScore} onChange={(event) => setMinimumScore(Number(event.target.value))} /></label>
         <p className="formula">Рейтинг — средневзвешенная оценка пяти факторов. Ограничения понижают балл: 100 означает отсутствие ограничений.</p><p className="demo-note">Данные в прототипе демонстрационные. До операционного решения нужны актуальные геоданные, проверка воздушных зон и участка.</p>
-        <section className="ranking"><div className="step-label"><b>3</b><span>Сравните кандидатов</span></div><h2>{eligibleCandidates.length} из {model.ranked.length} проходят порог <small>нажмите, чтобы увидеть детали</small></h2><ol>{model.ranked.map((candidate, index) => <li key={candidate.id}><button className={`${candidate.id === selected.id ? "rank-row selected" : "rank-row"}${candidate.score < minimumScore ? " below-threshold" : ""}`} type="button" onClick={() => setSelectedCandidate(candidate.id)}><b>{index + 1}</b><span><strong>{candidate.city}</strong><small>{candidate.road} · {candidate.roadDistance}</small></span><em>{Math.round(candidate.score)}</em></button></li>)}</ol></section>
+        <section className="ranking"><div className="step-label"><b>3</b><span>Сравните кандидатов</span></div><h2>{eligibleCandidates.length} из {visibleRankedCandidates.length} проходят порог <small>нажмите, чтобы увидеть детали</small></h2><ol>{visibleRankedCandidates.map((candidate, index) => <li key={candidate.id}><button className={`${candidate.id === selected.id ? "rank-row selected" : "rank-row"}${candidate.score < minimumScore ? " below-threshold" : ""}`} type="button" onClick={() => setSelectedCandidate(candidate.id)}><b>{index + 1}</b><span><strong>{candidate.city}</strong><small>{candidate.road} · {candidate.roadDistance}</small></span><em>{Math.round(candidate.score)}</em></button></li>)}</ol></section>
       </aside>
       <section className="map-area" aria-label="Карта кандидатов и ключевых дорог восемнадцати регионов">
         <div className="map-toolbar"><b>2. Изучите транспортные коридоры</b><span className="muted">нажмите на точку или строку кандидата</span></div>
         <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label="Карта восемнадцати регионов Центральной России и Поволжья с кандидатами и ключевыми автомобильными дорогами">
           <defs><pattern id="map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern>{model.regionLayers.map((region) => <filter key={`filter-${region.region}`} id={`region-border-${region.region}`} x="-3%" y="-3%" width="106%" height="106%"><feMorphology in="SourceAlpha" operator="dilate" radius="0.8" result="expanded" /><feComposite in="expanded" in2="SourceAlpha" operator="out" result="outer-border" /><feFlood floodColor={region.color} floodOpacity=".9" result="border-color" /><feComposite in="border-color" in2="outer-border" operator="in" /></filter>)}</defs>
           <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" className="map-grid" />
-          {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className="municipality" />)}
-          {model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className="region-tint" />)}
-          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className="region-outline" filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}
+          {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={model.scales.density(feature.properties.density)} className={selectedRegion === "all" || feature.properties.region === selectedRegion ? "municipality" : "municipality region-muted"} />)}
+          {model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className={selectedRegion === "all" || region.region === selectedRegion ? "region-tint" : "region-tint region-muted"} />)}
+          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className={`region-outline${selectedRegion === "all" ? "" : region.region === selectedRegion ? " focused" : " muted"}`} filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}
           {roadLines.map((road) => <path key={road.name} d={road.d ?? undefined} className={`road-line ${road.type}`} />)}
-          {model.regionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}
-          {model.ranked.map((candidate, index) => <g key={candidate.id} className={candidate.id === selected.id ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCandidate(candidate.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCandidate(candidate.id); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}
+          {visibleRegionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}
+          {visibleRankedCandidates.map((candidate, index) => <g key={candidate.id} className={candidate.id === selected.id ? "candidate-marker active" : "candidate-marker"} transform={`translate(${candidate.sx}, ${candidate.sy})`} role="button" tabIndex={0} aria-label={`${index + 1}. ${candidate.city}: ${Math.round(candidate.score)} баллов`} onClick={() => setSelectedCandidate(candidate.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCandidate(candidate.id); } }}><circle className="candidate-range" r="29" /><circle className="candidate-dot" r="14" /><text>{index + 1}</text></g>)}
         </svg>
         <div className="zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={resetMapViewport} aria-label="Сбросить масштаб">⌂</button></div>
         <div className="map-key"><div><b>Плотность, чел./км²</b>{legendValues.map((value) => <span key={value}><i style={{ background: model.scales.density(value) }} />{formatNumber(value)}</span>)}</div><div><b>Контекст карты</b><span><i className="region-swatch" />Контуры регионов</span><span><i className="road-swatch federal" />Федеральные магистрали</span><span><i className="road-swatch ring" />Кольцевые и Р-132</span><span><i className="city-swatch" />Кандидаты БПЛА</span><small>18 регионов · {model.features.length} муниципалитетов</small></div></div>
       </section>
-      <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{model.ranked.findIndex((candidate) => candidate.id === selected.id) + 1} · {selected.score >= minimumScore ? "проходит порог" : "ниже порога"}</span><h2>{selected.city}</h2><p>{selected.district} · {regionMeta[selected.region].name}</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="score-breakdown"><h3>Что формирует рейтинг</h3>{selected.breakdown.map((factor) => <div className="factor-row" key={factor.label}><span>{factor.label}</span><div aria-label={`${factor.label}: ${Math.round(factor.value)} из 100`}><i style={{ width: `${factor.value}%` }} /></div><b>{Math.round(factor.value)}</b><small>вес {factor.weight}%</small></div>)}</div><div className="why"><h3>Следующий шаг</h3><p>Проверьте актуальные запретные зоны, статус земли, подключение к электросети и точное время обслуживания. Только после этого площадку можно утверждать.</p></div></section>
+      <section className="selected-detail" aria-live="polite"><div className="detail-title"><span>Кандидат №{visibleRankedCandidates.findIndex((candidate) => candidate.id === selected.id) + 1} · {selected.score >= minimumScore ? "проходит порог" : "ниже порога"}</span><h2>{selected.city}</h2><p>{selected.district} · {regionMeta[selected.region].name}</p></div><div className="score-box"><span>Предварительный рейтинг</span><strong>{Math.round(selected.score)}</strong><small>из 100</small></div><div className="detail-metrics"><div><span>Охват населения</span><b>{selected.coverage}</b><small>в зоне анализа</small></div><div><span>Ближайшая магистраль</span><b>{selected.road}</b><small>{selected.roadDistance} от точки</small></div></div><div className="score-breakdown"><h3>Что формирует рейтинг</h3>{selected.breakdown.map((factor) => <div className="factor-row" key={factor.label}><span>{factor.label}</span><div aria-label={`${factor.label}: ${Math.round(factor.value)} из 100`}><i style={{ width: `${factor.value}%` }} /></div><b>{Math.round(factor.value)}</b><small>вес {factor.weight}%</small></div>)}</div><div className="why"><h3>Следующий шаг</h3><p>Проверьте актуальные запретные зоны, статус земли, подключение к электросети и точное время обслуживания. Только после этого площадку можно утверждать.</p></div></section>
     </section> : <section className="simple-workspace" aria-label="Карта населения восемнадцати регионов">
       <div className="simple-map-frame">
         <svg ref={mapRef} className={isDraggingMap ? "zoomable-map dragging" : "zoomable-map"} style={{ transform: formatViewportTransform(mapViewport) }} onWheel={handleWheelZoom} onPointerDown={startMapDrag} onPointerMove={moveMapDrag} onPointerUp={endMapDrag} onPointerCancel={endMapDrag} viewBox="0 0 1000 610" role="img" aria-label={`Муниципалитеты восемнадцати регионов Центральной России и Поволжья по показателю: ${view === "density" ? "плотность" : "население"}`}>
           <defs><pattern id="simple-map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 46" className="map-grid-line" /></pattern>{model.regionLayers.map((region) => <filter key={`filter-${region.region}`} id={`region-border-${region.region}`} x="-3%" y="-3%" width="106%" height="106%"><feMorphology in="SourceAlpha" operator="dilate" radius="0.8" result="expanded" /><feComposite in="expanded" in2="SourceAlpha" operator="out" result="outer-border" /><feFlood floodColor={region.color} floodOpacity=".9" result="border-color" /><feComposite in="border-color" in2="outer-border" operator="in" /></filter>)}</defs>
           <rect width="1000" height="610" className="map-water" /><rect width="1000" height="610" fill="url(#simple-map-grid)" className="map-grid" />
-          {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={selectedFeature?.properties.key === feature.properties.key ? "municipality selected" : "municipality"} role="button" tabIndex={0} aria-label={`${feature.properties.name}, ${regionMeta[feature.properties.region].name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => selectMunicipality(feature.properties.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMunicipality(feature.properties.key); } }} />)}
-          {model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className="region-tint" />)}
-          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className="region-outline" filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}
-          {model.regionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}
+          {model.features.map((feature) => <path key={feature.properties.key} d={model.path(feature) ?? undefined} fill={activeScale(feature.properties[view])} className={`${selectedFeature?.properties.key === feature.properties.key ? "municipality selected" : "municipality"}${selectedRegion === "all" || feature.properties.region === selectedRegion ? "" : " region-muted"}`} role="button" tabIndex={selectedRegion === "all" || feature.properties.region === selectedRegion ? 0 : -1} aria-label={`${feature.properties.name}, ${regionMeta[feature.properties.region].name}: ${formatNumber(feature.properties.population)} жителей`} onClick={() => selectMunicipality(feature.properties.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMunicipality(feature.properties.key); } }} />)}
+          {model.regionLayers.map((region) => <path key={`${region.region}-tint`} d={region.d} fill={region.color} className={selectedRegion === "all" || region.region === selectedRegion ? "region-tint" : "region-tint region-muted"} />)}
+          {model.regionLayers.map((region) => <g key={`${region.region}-outline`} className={`region-outline${selectedRegion === "all" ? "" : region.region === selectedRegion ? " focused" : " muted"}`} filter={`url(#region-border-${region.region})`}><path d={region.d} fill="#000" /></g>)}
+          {visibleRegionLabels.map((region) => <RegionLabel key={region.region} name={region.name} coordinates={region.coordinates} />)}
           {visibleCities.map((city) => <g key={`${city.region}:${city.name}`}><line x1={city.sx} y1={city.sy} x2={city.x} y2={city.y} stroke={city.color} className="city-leader" /><circle cx={city.sx} cy={city.sy} r="3" fill={city.color} /><g transform={`translate(${city.x}, ${city.y})`} className={selectedMapCity?.name === city.name ? "city-marker selected" : "city-marker"} role="button" tabIndex={0} aria-label={`${city.index}. ${city.name}, ${city.regionName}: ${formatNumber(city.population)} жителей`} onClick={(event) => { event.stopPropagation(); toggleMapCity(city); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleMapCity(city); } }}><circle r="10" fill={city.color} /><text>{city.index}</text></g></g>)}
         </svg>
         <div className="simple-zoom-controls zoom-controls" aria-label="Масштаб карты"><button type="button" onClick={() => changeZoom(.2)} aria-label="Приблизить">+</button><button type="button" onClick={() => changeZoom(-.2)} aria-label="Отдалить">−</button><button type="button" onClick={resetMapViewport} aria-label="Сбросить масштаб">⌂</button></div>
@@ -397,7 +363,7 @@ export function PopulationMap() {
           <div className="legend-symbols"><span><i className="region-swatch" />контур области</span><span><i className="city-swatch" />крупнейший город</span></div>
         </section>
         <section className="region-atlas"><h2>Сводка по областям</h2><ol>{model.regionLayers.map((region) => <li key={region.region}><i style={{ background: region.color }} /><span>{region.name.replace(" область", "")}</span><em>{formatCompact(region.population)}</em></li>)}</ol></section>
-        <section className="city-list"><h2>10 крупнейших городов</h2><ol>{model.cities.slice(0, 10).map((city) => <li key={`${city.region}:${city.name}`}><button type="button" onClick={() => toggleMapCity(city)}><b style={{ background: city.color }}>{city.index}</b><span>{city.name}</span><em>{view === "density" ? `${formatNumber(city.districtDensity)} чел./км²` : `${formatNumber(city.population)} чел.`}</em></button></li>)}</ol></section>
+        <section className="city-list"><h2>10 крупнейших городов</h2><ol>{visibleMapCities.slice(0, 10).map((city) => <li key={`${city.region}:${city.name}`}><button type="button" onClick={() => toggleMapCity(city)}><b style={{ background: city.color }}>{city.index}</b><span>{city.name}</span><em>{view === "density" ? `${formatNumber(city.districtDensity)} чел./км²` : `${formatNumber(city.population)} чел.`}</em></button></li>)}</ol></section>
       </aside>
     </section>}
   </main>;
